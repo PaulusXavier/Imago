@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Imago</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="icon.svg" />
+  <meta name="theme-color" content="#1b1140" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="status-bar">
+    <span id="status-dot"></span>
+    <span id="status-text">Desconectado</span>
+  </div>
+
+  <!-- Tela de conexão -->
+  <section id="connect-screen" class="screen">
+    <h1>Imago</h1>
+    <p class="subtitle">Controle remoto · PowerPoint &amp; Prezi</p>
+
+    <div class="field">
+      <label for="input-ip">IP local do PC (Wi-Fi)</label>
+      <input id="input-ip" type="text" placeholder="ex: 192.168.0.10" />
+    </div>
+    <div class="field">
+      <label for="input-port">Porta local</label>
+      <input id="input-port" type="text" placeholder="8765" />
+    </div>
+    <div class="field">
+      <label for="input-code">Código (dados móveis)</label>
+      <input id="input-code" type="text" inputmode="numeric" placeholder="ex: 1234" />
+    </div>
+    <div class="field">
+      <label for="input-token">Código de segurança (tela do PC)</label>
+      <input id="input-token" type="text" placeholder="ex: 7K2QXM9F3P" autocapitalize="characters" />
+    </div>
+
+    <button id="btn-connect">Conectar</button>
+    <p class="hint">Dica: se você abriu este link pelo QR code gerado no PC, os campos já vêm preenchidos.</p>
+
+    <button id="btn-install" class="link-btn hidden">📲 Instalar app na tela inicial</button>
+    <p id="installed-hint" class="hint center hidden">✓ App instalado -- pode abrir direto da tela inicial da próxima vez.</p>
+  </section>
+
+  <!-- Tela de controle -->
+  <section id="control-screen" class="screen hidden">
+    <div id="reconnect-banner" class="hidden">Reconectando…</div>
+    <div id="timer">00:00</div>
+
+    <div id="slide-info" class="hidden">
+      <div id="slide-counter"></div>
+      <div id="slide-title"></div>
+      <div id="slide-notes"></div>
+    </div>
+
+    <div class="tabs">
+      <button id="tab-slides" class="tab active">Slides</button>
+      <button id="tab-thumbs" class="tab">Miniaturas</button>
+      <button id="tab-laser" class="tab">Laser</button>
+      <button id="tab-history" class="tab">Histórico</button>
+    </div>
+
+    <div id="slides-panel" class="panel">
+      <button id="btn-prev" class="nav-btn">◀ Anterior</button>
+      <button id="btn-next" class="nav-btn primary">Próximo ▶</button>
+      <p class="hint center">Também dá pra arrastar o dedo para os lados aqui em cima.</p>
+    </div>
+
+    <div id="thumbs-panel" class="panel hidden">
+      <p id="thumbs-status" class="hint center"></p>
+      <div id="thumbs-grid"></div>
+    </div>
+
+    <div id="laser-panel" class="panel hidden">
+      <div id="touchpad">
+        <span id="touchpad-label">Arraste o dedo aqui<br />para apontar</span>
+      </div>
+    </div>
+
+    <div id="history-panel" class="panel hidden">
+      <p id="history-empty" class="hint center hidden">Nenhuma apresentação registrada ainda.</p>
+      <div id="history-list"></div>
+    </div>
+
+    <div class="extra-row">
+      <button id="btn-black" class="small-btn">Tela preta</button>
+      <button id="btn-start" class="small-btn">Iniciar</button>
+      <button id="btn-end" class="small-btn">Encerrar</button>
+    </div>
+
+    <div class="field">
+      <label for="notes">Minhas anotações extras (visível só pra você)</label>
+      <textarea id="notes" rows="4" placeholder="Cole aqui suas anotações do slide atual..."></textarea>
+    </div>
+
+    <button id="btn-disconnect" class="link-btn">Desconectar</button>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>
