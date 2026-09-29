@@ -36,7 +36,8 @@
       "modules.js"
     ],
     "assets": [
-      "office-bridge.ps1"
+      "office-bridge.ps1",
+      "input-bridge.ps1"
     ]
   },
   "engines": {
