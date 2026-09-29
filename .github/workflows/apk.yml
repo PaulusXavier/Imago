@@ -62,11 +62,9 @@ jobs:
           path: Imago.apk
 
       # Link fixo de download: https://github.com/<usuario>/<repo>/releases/download/apk-latest/Imago.apk
-      - name: Publicar o APK na Release "apk-latest"
+      - name: Publicar o APK na Release apk-latest
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete apk-latest --cleanup-tag -y || true
-          gh release create apk-latest Imago.apk \
-            --title "Imago (APK Android)" \
-            --notes "APK gerado automaticamente a partir do commit ${GITHUB_SHA::7}. Baixe o Imago.apk
+          gh release create apk-latest Imago.apk --title "Imago (APK Android)" --notes "APK gerado automaticamente. Baixe o Imago.apk no celular e instale."
