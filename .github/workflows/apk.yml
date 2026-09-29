@@ -1,0 +1,68 @@
+name: Gerar APK do Imago
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apk
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci --ignore-scripts
+
+      # Falha cedo (antes dos ~5 min de build) se a lógica de segurança/atualização quebrar.
+      - name: Rodar os testes
+        run: npm test
+
+      - name: Sincronizar o app web com o Android
+        run: npm run sync
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Compilar o APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Guardar o APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk Imago.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Imago-apk
+          path: Imago.apk
+
+      # Link fixo de download: https://github.com/<usuario>/<repo>/releases/download/apk-latest/Imago.apk
+      - name: Publicar o APK na Release "apk-latest"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete apk-latest --cleanup-tag -y || true
+          gh release create apk-latest Imago.apk \
+            --title "Imago (APK Android)" \
+            --notes "APK gerado automaticamente a partir do commit ${GITHUB_SHA::7}. Baixe o Imago.apk no celular e instale."
