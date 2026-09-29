@@ -1,0 +1,48 @@
+name: Gerar Imago para Windows (PC)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pc
+  cancel-in-progress: true
+
+jobs:
+  pc:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # O empacotador (pkg) usa Node 18; o robotjs (teclas) é compilado aqui.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Instalar dependências (compila o robotjs)
+        run: npm ci --no-audit --no-fund
+
+      - name: Gerar o Imago.exe
+        run: npm run build:win
+
+      - name: Compactar a pasta do PC
+        run: Compress-Archive -Path dist/win/* -DestinationPath Imago-PC-Windows.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Imago-PC-Windows
+          path: Imago-PC-Windows.zip
+
+      # Link fixo: https://github.com/<usuario>/<repo>/releases/download/pc-latest/Imago-PC-Windows.zip
+      - name: Publicar na Release pc-latest
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete pc-latest --cleanup-tag -y || true
+          gh release create pc-latest Imago-PC-Windows.zip --title "Imago para Windows (PC)" --notes "Programa do PC gerado automaticamente. Extraia o zip e abra o Imago.exe."
