@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Imago</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="icon.svg" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Imago" />
+  <meta name="theme-color" content="#1b1140" />
+  <style>
+:root {
+  --bg: #1b1140;
+  --card: #271a54;
+  --text: #fff6e8;
+  --muted: #b3a6e0;
+  --primary: #ff7a29;
+  --primary-text: #1b1140;
+  --danger: #ff4d6d;
+  --ok: #17d7c0;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+#status-bar {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--card);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+#status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+#status-dot.connected { background: var(--ok); }
+
+.screen {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 24px 20px 40px;
+}
+.hidden { display: none !important; }
+
+h1 { font-size: 24px; margin-bottom: 2px; }
+.subtitle { color: var(--muted); margin-top: 0; margin-bottom: 24px; }
+
+.field { margin-bottom: 16px; }
+.field label {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+input, textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid #2a2e38;
+  background: var(--card);
+  color: var(--text);
+  font-size: 16px;
+}
+textarea { resize: vertical; font-family: inherit; }
+
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+#btn-connect {
+  width: 100%;
+  padding: 14px;
+  background: var(--primary);
+  color: var(--primary-text);
+  margin-top: 8px;
+}
+
+.hint { color: var(--muted); font-size: 12px; margin-top: 16px; }
+
+#timer {
+  text-align: center;
+  font-size: 32px;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 20px;
+  color: var(--muted);
+}
+
+#reconnect-banner {
+  text-align: center;
+  background: var(--danger);
+  color: white;
+  padding: 8px;
+  border-radius: 10px;
+  margin-bottom: 14px;
+  font-size: 14px;
+}
+
+#slide-info {
+  background: var(--card);
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+#slide-info.hidden { display: none; }
+#slide-counter {
+  font-size: 12px;
+  color: var(--ok);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+#slide-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+#slide-notes {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 18px;
+  background: var(--card);
+  padding: 4px;
+  border-radius: 12px;
+  overflow-x: auto;
+}
+.tab {
+  flex: 1 0 auto;
+  min-width: 78px;
+  padding: 10px 8px;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 9px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.tab.active { background: var(--primary); color: var(--primary-text); }
+
+.hint.center { text-align: center; }
+
+#touchpad {
+  height: 260px;
+  border-radius: 18px;
+  background: var(--card);
+  border: 2px dashed #3a2f70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+  margin-bottom: 14px;
+  touch-action: none;
+  user-select: none;
+}
+#touchpad.dragging {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.panel.hidden { display: none; }
+
+.nav-btn {
+  display: block;
+  width: 100%;
+  padding: 26px;
+  margin-bottom: 14px;
+  background: var(--card);
+  color: var(--text);
+  font-size: 20px;
+}
+.nav-btn.primary { background: var(--primary); color: var(--primary-text); }
+.nav-btn:active { transform: scale(0.98); }
+
+.extra-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+.small-btn {
+  flex: 1;
+  padding: 12px 6px;
+  background: var(--card);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.link-btn {
+  width: 100%;
+  background: none;
+  color: var(--danger);
+  padding: 12px;
+  font-size: 14px;
+}
+
+/* ---------- Miniaturas dos slides ---------- */
+#thumbs-status {
+  margin-top: 0;
+}
+#thumbs-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.thumb-item {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  padding: 0;
+  border-radius: 10px;
+  background: var(--card);
+  border: 2px solid transparent;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+}
+.thumb-item img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.thumb-item.skeleton {
+  background: linear-gradient(100deg, var(--card) 30%, #3a2f70 50%, var(--card) 70%);
+  background-size: 200% 100%;
+  animation: thumb-shimmer 1.4s infinite;
+}
+@keyframes thumb-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.thumb-item.current {
+  border-color: var(--primary);
+}
+.thumb-label {
+  position: relative;
+  z-index: 1;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.55);
+  padding: 2px 6px;
+  border-radius: 6px;
+  margin: 4px;
+}
+
+/* ---------- Histórico de sessões ---------- */
+#history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.history-item {
+  background: var(--card);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+.history-item-top {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.history-item-bottom {
+  font-size: 13px;
+  color: var(--muted);
+}
+.history-item-file {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+  font-style: italic;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f4f5f7;
+    --card: #ffffff;
+    --text: #16181d;
+    --muted: #6b7280;
+  }
+  input, textarea { border-color: #e2e4e9; }
+}
+
+/* ---------- Office ---------- */
+#next-preview { background: var(--card); border-radius: 12px; padding: 10px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 6px; }
+#next-preview-label { font-size: 12px; color: var(--ok); font-weight: 600; }
+#next-preview-img { width: 100%; border-radius: 8px; display: block; }
+#next-preview-title { font-size: 13px; color: var(--muted); }
+#media-list { margin-bottom: 14px; }
+#office-docs { width: 100%; padding: 12px; border-radius: 10px; background: var(--card); color: var(--text); border: 1px solid #2a2e38; font-size: 15px; margin-bottom: 14px; }
+.office-heading { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 16px 0 8px; }
+.office-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.office-row { display: flex; align-items: center; gap: 6px; background: var(--card); border-radius: 10px; }
+.office-row .small-btn { flex: 0 0 auto; padding: 8px 10px; background: transparent; }
+.office-row.active { outline: 2px solid var(--primary); }
+.office-row.is-hidden .office-item { opacity: .45; text-decoration: line-through; }
+.office-item { flex: 1; text-align: left; background: none; color: var(--text); padding: 12px 10px; font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.office-section { font-size: 12px; color: var(--primary); font-weight: 600; margin: 8px 2px 2px; }
+#media-list .office-row { padding: 6px 10px; justify-content: space-between; font-size: 14px; }
+
+
+/* ---------- Bluetooth + modo completo ---------- */
+.bt-card {
+  background: var(--card);
+  border: 1px solid var(--ok);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 18px;
+}
+.bt-card h2 { margin: 0 0 6px; font-size: 18px; }
+.bt-card .hint { margin-top: 6px; }
+.badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ok);
+  margin-left: 6px;
+}
+#wifi-card summary { cursor: pointer; font-weight: 600; margin: 8px 0 14px; }
+#wifi-card summary .badge { display: block; margin: 2px 0 0; color: var(--muted); font-weight: 400; }
+#bt-device {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--muted);
+  font-size: 15px;
+}
+.check-row { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 13px; margin: 12px 0; }
+body.bt-mode #tab-thumbs, body.bt-mode #tab-office, body.bt-mode #tab-history { display: none; }
+
+.bt-only { display: none; }
+body.bt-mode .bt-only { display: block; }
+#timer { cursor: pointer; user-select: none; -webkit-user-select: none; }
+#timer.paused { opacity: .45; }
+
+/* ---------- Melhorias v2.1 ---------- */
+.nav-row { display: flex; gap: 12px; margin-bottom: 14px; }
+.nav-row .nav-btn { width: auto; margin: 0; padding: 36px 8px; }
+#btn-prev { flex: 1; }
+#btn-next { flex: 2; font-size: 22px; }
+.small-btn { min-height: 46px; font-size: 14px; }
+#slide-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+#slide-head .tiny { background: transparent; color: var(--muted); padding: 2px 8px; font-size: 13px; border: 1px solid #3a2f70; border-radius: 8px; }
+#slide-progress { height: 4px; border-radius: 4px; background: #3a2f70; margin: 6px 0 10px; overflow: hidden; }
+#slide-progress-bar { height: 100%; width: 0; background: var(--ok); transition: width .25s; }
+#slide-notes { max-height: 24vh; overflow-y: auto; }
+.sens-row { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
+.sens-row input { flex: 1; padding: 0; }
+#toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); max-width: min(440px, 92vw); background: var(--text); color: var(--bg); padding: 12px 16px; border-radius: 12px; font-size: 14px; font-weight: 600; z-index: 50; text-align: center; }
+button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 3px solid var(--ok); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* ---------- Design v2.2 ---------- */
+:root { --line: #3a2f70; }
+h1 { font-size: 36px; font-weight: 800; letter-spacing: -0.03em; margin: 0; }
+.brand { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
+.brand img { width: 52px; height: 52px; border-radius: 14px; box-shadow: 0 6px 18px rgba(0,0,0,.35); }
+.subtitle { font-size: 15px; margin-bottom: 26px; }
+#status-bar { z-index: 10; margin: 10px 16px 0; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); font-weight: 600; }
+#status-dot { width: 10px; height: 10px; }
+#status-dot.connected { box-shadow: 0 0 0 4px rgba(23,215,192,.22); }
+input, textarea, #office-docs { border: 1px solid var(--line); border-radius: 12px; }
+input:focus, textarea:focus { border-color: var(--primary); }
+.bt-card { border: 1px solid var(--line); border-radius: 22px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+.bt-card h2 { font-size: 20px; letter-spacing: -0.01em; }
+.badge { display: block; margin: 4px 0 0; font-size: 12px; font-weight: 500; }
+#btn-bt-connect { width: 100%; padding: 17px; margin-top: 10px; background: var(--primary); color: var(--primary-text); border-radius: 14px; font-size: 17px; font-weight: 800; box-shadow: 0 8px 22px rgba(255,122,41,.3); }
+#btn-bt-connect:disabled, #btn-connect:disabled { opacity: .6; }
+#btn-connect { border-radius: 14px; font-weight: 800; }
+#wifi-card { border: 1px solid var(--line); border-radius: 18px; padding: 4px 16px 12px; margin-bottom: 14px; }
+#wifi-card summary { margin: 12px 0; }
+#timer { font-size: 46px; font-weight: 700; letter-spacing: -0.02em; color: var(--text); margin-bottom: 16px; }
+#slide-info { border-left: 4px solid var(--primary); border-radius: 6px 18px 18px 6px; padding: 16px 18px; }
+#slide-counter { font-size: 13px; }
+#slide-title { font-size: 19px; line-height: 1.25; letter-spacing: -0.01em; margin-bottom: 8px; }
+#slide-notes { line-height: 1.5; }
+.tabs { padding: 5px; border-radius: 16px; border: 1px solid var(--line); scrollbar-width: none; }
+.tab { border-radius: 12px; font-weight: 700; padding: 11px 8px; }
+.tab.active { box-shadow: 0 3px 10px rgba(255,122,41,.35); }
+.nav-btn { border-radius: 22px; border: 1px solid var(--line); font-weight: 700; }
+#btn-next { border: none; font-weight: 800; box-shadow: 0 12px 28px rgba(255,122,41,.38); }
+.nav-btn:active { transform: scale(.97); }
+.small-btn { border: 1px solid var(--line); border-radius: 14px; font-weight: 600; }
+.small-btn:active { background: var(--line); }
+#btn-end { color: var(--danger); }
+#touchpad { height: 300px; border: 1px solid var(--line); border-radius: 26px; background-color: var(--card); background-image: radial-gradient(var(--line) 1.2px, transparent 1.2px); background-size: 22px 22px; line-height: 1.6; }
+#touchpad.dragging { box-shadow: inset 0 0 0 2px var(--primary); }
+.thumb-item { border-radius: 12px; }
+.thumb-item.current { box-shadow: 0 0 0 3px rgba(255,122,41,.35); }
+.history-item, #next-preview, .office-row { border: 1px solid var(--line); }
+.link-btn { font-weight: 600; }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) { --line: #e2e4e9; --bg: #f3f1fa; }
+  .bt-card, #btn-next, #btn-bt-connect { box-shadow: 0 8px 24px rgba(27,17,64,.10); }
+  #btn-next, #btn-bt-connect { box-shadow: 0 10px 24px rgba(255,122,41,.35); }
+  #slide-progress { background: #e2e4e9; }
+  #status-dot.connected { box-shadow: 0 0 0 4px rgba(23,215,192,.25); }
+}
+
+/* ---------- Guia de instalação ---------- */
+#install-card { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 16px 18px; margin-bottom: 18px; }
+#install-card h2 { margin: 0 0 6px; font-size: 17px; }
+#install-card p { margin: 0 0 10px; font-size: 14px; color: var(--muted); line-height: 1.45; white-space: pre-line; }
+#install-card p.hint { font-size: 12px; margin: 8px 0 0; }
+.install-link { display: block; text-align: center; text-decoration: none; padding: 15px; border-radius: 14px; background: var(--primary); color: var(--primary-text); font-weight: 800; font-size: 16px; box-shadow: 0 8px 22px rgba(255,122,41,.3); }
+#install-card .link-btn { color: var(--ok); margin-top: 6px; }
+
+/* ---------- Tela de conexão ---------- */
+.row2 { display: grid; grid-template-columns: 1fr 104px; gap: 10px; }
+.fhint { margin: 6px 2px 0; font-size: 12px; color: var(--muted); line-height: 1.4; }
+.code-input { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 20px; letter-spacing: .14em; text-transform: uppercase; }
+input.invalid { border-color: var(--danger); }
+.form-error { margin: 0 0 12px; padding: 10px 12px; border-radius: 12px; background: rgba(255,77,109,.14); color: var(--danger); font-size: 14px; font-weight: 600; }
+.quick { width: 100%; margin-bottom: 16px; padding: 14px; border-radius: 14px; background: transparent; color: var(--ok); border: 1.5px solid var(--ok); font-size: 15px; font-weight: 700; }
+.divider { display: flex; align-items: center; gap: 12px; margin: 22px 0 14px; color: var(--muted); font-size: 13px; }
+.divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+#btn-connect { padding: 16px; font-size: 17px; }
+#btn-connect:disabled::after { content: ""; display: inline-block; width: 14px; height: 14px; margin-left: 10px; vertical-align: -2px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div id="status-bar">
+    <span id="status-dot"></span>
+    <span id="status-text">Desconectado</span>
+  </div>
+
+  <!-- Tela de conexão -->
+  <section id="connect-screen" class="screen">
+    <div class="brand"><img src="icon.svg" alt="" /><h1>Imago</h1></div>
+    <p class="subtitle">Controle remoto · PowerPoint &amp; Prezi</p>
+
+    <div id="install-card" class="hidden">
+      <h2>Instalar o Imago</h2>
+      <div id="install-body"></div>
+    </div>
+
+    <!-- Modo Bluetooth: só aparece no app Android (APK). Não precisa de nada no PC. -->
+    <div id="bt-card" class="bt-card hidden">
+      <h2>Bluetooth <span class="badge">sem instalar nada no PC</span></h2>
+      <p id="bt-message" class="hint">Iniciando Bluetooth…</p>
+      <select id="bt-device" class="hidden"></select>
+      <button id="btn-bt-connect">Conectar por Bluetooth</button>
+      <button id="btn-bt-pair" class="link-btn">1ª vez? Parear com o PC (abre o Bluetooth do Android)</button>
+      <p class="hint">No Windows: Configurações › Bluetooth › Adicionar dispositivo › escolha este celular. Só na primeira vez.</p>
+    </div>
+
+    <div id="web-bt-hint" class="hint hidden">Bluetooth só funciona no app Android (APK) do Imago. Aqui no navegador use o modo Wi-Fi/internet abaixo.</div>
+
+    <div id="net-divider" class="divider hidden"><span>ou conecte pela rede</span></div>
+
+    <details id="wifi-card" open>
+      <summary>Wi-Fi / internet <span class="badge">precisa do Imago no PC: notas, miniaturas, Office</span></summary>
+    <button id="btn-quick" class="quick hidden" type="button"></button>
+
+    <div class="field">
+      <label for="input-link">Colar link do PC</label>
+      <input id="input-link" type="url" placeholder="Cole aqui o link do QR code" autocomplete="off" />
+      <p class="fhint">Copie o link mostrado no PC e cole: os campos abaixo se preenchem sozinhos.</p>
+    </div>
+    <div class="row2">
+      <div class="field">
+        <label for="input-ip">IP do PC</label>
+        <input id="input-ip" type="text" inputmode="decimal" placeholder="192.168.0.10" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label for="input-port">Porta</label>
+        <input id="input-port" type="text" inputmode="numeric" placeholder="8765" autocomplete="off" />
+      </div>
+    </div>
+    <div class="field">
+      <label for="input-token">Código de segurança</label>
+      <input id="input-token" class="code-input" type="text" placeholder="7K2QXM9F3P" autocapitalize="characters" autocomplete="off" spellcheck="false" />
+      <p class="fhint">Aparece na tela do PC, junto do QR code. Muda toda vez que o Imago abre.</p>
+    </div>
+    <div class="field">
+      <label for="input-code">Código do relay (só para dados móveis)</label>
+      <input id="input-code" type="text" inputmode="numeric" placeholder="6 dígitos" autocomplete="off" />
+    </div>
+    <p id="form-error" class="form-error hidden" role="alert"></p>
+    <button id="btn-connect" type="button">Conectar</button>
+    </details>
+
+        <p id="installed-hint" class="hint center hidden">✓ App instalado -- pode abrir direto da tela inicial da próxima vez.</p>
+  </section>
+
+  <!-- Tela de controle -->
+  <section id="control-screen" class="screen hidden">
+    <div id="reconnect-banner" class="hidden">Reconectando…</div>
+    <div id="timer" title="Toque: pausar/continuar · Duplo toque: zerar">00:00</div>
+
+    <div id="slide-info" class="hidden">
+      <div id="slide-head"><div id="slide-counter"></div><span><button id="btn-notes-minus" class="tiny" aria-label="Diminuir letra das notas">A−</button> <button id="btn-notes-plus" class="tiny" aria-label="Aumentar letra das notas">A+</button></span></div>
+      <div id="slide-progress"><div id="slide-progress-bar"></div></div>
+      <div id="slide-title"></div>
+      <div id="slide-notes"></div>
+    </div>
+
+    <div class="tabs">
+      <button id="tab-slides" class="tab active">Slides</button>
+      <button id="tab-thumbs" class="tab">Miniaturas</button>
+      <button id="tab-laser" class="tab">Laser</button>
+      <button id="tab-office" class="tab">Office</button>
+      <button id="tab-history" class="tab">Histórico</button>
+    </div>
+
+    <div id="slides-panel" class="panel">
+      <div id="next-preview" class="hidden">
+        <span id="next-preview-label">Próximo</span>
+        <img id="next-preview-img" alt="Próximo slide" hidden />
+        <span id="next-preview-title"></span>
+      </div>
+      <div class="nav-row">
+        <button id="btn-prev" class="nav-btn" aria-label="Slide anterior">◀ Anterior</button>
+        <button id="btn-next" class="nav-btn primary" aria-label="Próximo slide">Próximo ▶</button>
+      </div>
+      <div class="extra-row">
+        <button id="btn-first" class="small-btn">⏮ Primeiro</button>
+        <button id="btn-last" class="small-btn">Último ⏭</button>
+        <button id="btn-white" class="small-btn">Tela branca</button>
+      </div>
+      <div id="media-list" class="hidden"></div>
+      <p class="hint center">Também dá pra arrastar o dedo para os lados aqui em cima.</p>
+      <p class="hint center bt-only">Modo Bluetooth: notas e miniaturas exigem o modo Wi-Fi com o Imago no PC.</p>
+    </div>
+
+    <div id="thumbs-panel" class="panel hidden">
+      <p id="thumbs-status" class="hint center"></p>
+      <div id="thumbs-grid"></div>
+    </div>
+
+    <div id="laser-panel" class="panel hidden">
+      <div id="touchpad">
+        <span id="touchpad-label">Arraste o dedo aqui para apontar<br />Toque rápido = clique</span>
+      </div>
+      <label class="sens-row">Sensibilidade <input id="laser-sens" type="range" min="1" max="4" step="0.2" value="2.2" /></label>
+    </div>
+
+    <div id="office-panel" class="panel hidden">
+      <p id="office-empty" class="hint center">Nenhum documento do Office aberto no PC (ou a ponte só funciona no Windows).</p>
+      <select id="office-docs" class="hidden"></select>
+      <div id="office-body"></div>
+    </div>
+
+    <div id="history-panel" class="panel hidden">
+      <p id="history-empty" class="hint center hidden">Nenhuma apresentação registrada ainda.</p>
+      <div id="history-list"></div>
+    </div>
+
+    <div class="extra-row">
+      <button id="btn-black" class="small-btn">Tela preta</button>
+      <button id="btn-start" class="small-btn">Iniciar</button>
+      <button id="btn-start-current" class="small-btn">Iniciar deste slide</button>
+      <button id="btn-end" class="small-btn">Encerrar</button>
+    </div>
+
+    <div class="field">
+      <label for="notes">Minhas anotações deste slide (salvas neste celular)</label>
+      <textarea id="notes" rows="4" placeholder="Cole aqui suas anotações do slide atual..."></textarea>
+    </div>
+
+    <label id="volume-row" class="check-row hidden"><input id="chk-volume" type="checkbox" checked /> Usar botões de volume (baixo = próximo, cima = anterior)</label>
+
+    <button id="btn-disconnect" class="link-btn">Desconectar</button>
+  </section>
+
+  <div id="toast" class="hidden" role="status" aria-live="polite"></div>
+
+  <script src="capacitor.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+{
+  "name": "imago",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Imago - controle remoto de apresentacoes (Bluetooth + Wi-Fi): app Android, app web, programa do PC e relay",
+  "main": "controller.js",
+  "bin": "controller.js",
+  "scripts": {
+    "start": "node controller.js",
+    "configurar": "node controller.js --configurar",
+    "relay": "node relay-server.js",
+    "test": "node logic_test.js",
+    "prepare:web": "node -e \"const fs=require('fs');fs.mkdirSync('www',{recursive:true});for(const f of ['index.html','app.js','sw.js','manifest.json','version.json','icon.svg','capacitor.js','icon-192.png','icon-512.png','icon-maskable-512.png','apple-touch-icon.png'])fs.copyFileSync(f,'www/'+f)\"",
+    "sync": "npm run prepare:web && cap sync android",
+    "build:win": "pkg . --targets node18-win-x64 --output dist/win/Imago.exe",
+    "build:mac": "pkg . --targets node18-macos-x64 --output dist/mac/Imago",
+    "build:linux": "pkg . --targets node18-linux-x64 --output dist/linux/Imago",
+    "postbuild:win": "node build-copy-native.js win",
+    "postbuild:mac": "node build-copy-native.js mac",
+    "postbuild:linux": "node build-copy-native.js linux"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/cli": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
+    "adm-zip": "^0.5.16",
+    "qrcode-terminal": "^0.12.0",
+    "robotjs": "^0.6.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1"
+  },
+  "pkg": {
+    "scripts": [
+      "modules.js"
+    ],
+    "assets": [
+      "office-bridge.ps1"
+    ]
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
