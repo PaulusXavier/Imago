@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">Imago</string>
-    <string name="title_activity_main">Imago</string>
-    <string name="package_name">br.paulusxavier.imago</string>
-    <string name="custom_url_scheme">br.paulusxavier.imago</string>
-</resources>
