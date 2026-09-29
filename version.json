@@ -1,9 +1,0 @@
-{
-  "version": "1.1.0",
-  "notes": "",
-  "downloads": {
-    "win": { "url": "", "sha256": "" },
-    "mac": { "url": "", "sha256": "" },
-    "linux": { "url": "", "sha256": "" }
-  }
-}
