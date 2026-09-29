@@ -1,6 +1,0 @@
-{
-  "appId": "br.paulusxavier.imago",
-  "appName": "Imago",
-  "webDir": "www",
-  "android": { "allowMixedContent": true }
-}
