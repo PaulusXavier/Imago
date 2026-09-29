@@ -67,13 +67,16 @@ let robot;
 try {
   robot = require(robotModuleDir);
 } catch (err) {
-  console.log('[Erro fatal] Nao consegui carregar o robotjs (controle de teclado/mouse):', err.message);
-  if (process.pkg) {
-    console.log('             Confira se a pasta "node_modules" esta do lado do Imago.exe (nao mova o .exe sozinho pra fora da pasta).');
-  } else {
-    console.log('             Rode "npm install" na pasta do Imago.');
+  if (process.platform === 'win32') robot = createWindowsInputShim(err);
+  if (!robot) {
+    console.log('[Erro fatal] Nao consegui carregar o robotjs (controle de teclado/mouse):', err.message);
+    if (process.pkg) {
+      console.log('             Confira se a pasta "node_modules" esta do lado do Imago.exe (nao mova o .exe sozinho pra fora da pasta).');
+    } else {
+      console.log('             Rode "npm install" na pasta do Imago.');
+    }
+    process.exit(1);
   }
-  process.exit(1);
 }
 
 const { WebSocketServer, WebSocket } = require('ws');
@@ -495,10 +498,50 @@ function executeCommand(cmd, msg) {
 // normal do touchpad (que manda valores bem menores que isso).
 const MAX_MOUSE_DELTA = 2000;
 
+
+// Sem robotjs (ex.: bloqueado pelo Smart App Control do Windows, que nao aceita
+// modulos nativos sem assinatura), usa o PowerShell: SendKeys + mouse_event.
+function createWindowsInputShim(cause) {
+  try {
+    const fsX = require('fs');
+    const osX = require('os');
+    const cp = require('child_process');
+    const script = path.join(osX.tmpdir(), 'imago-input-bridge.ps1');
+    fsX.writeFileSync(script, fsX.readFileSync(path.join(__dirname, 'input-bridge.ps1')));
+    const child = cp.spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script], {
+      stdio: ['pipe', 'ignore', 'pipe'],
+      windowsHide: true,
+    });
+    child.on('error', (e) => console.log('[Erro] PowerShell nao iniciou:', e.message));
+    child.stderr.on('data', (d) => console.log('[input]', String(d).trim()));
+    process.on('exit', () => { try { child.kill(); } catch { /* ja encerrou */ } });
+    console.log('[Aviso] robotjs indisponivel (' + String(cause.message).split('\n')[0] + ').');
+    console.log('        Usando o modo PowerShell para teclado e mouse.');
+    const send = (o) => { if (child.stdin.writable) child.stdin.write(JSON.stringify(o) + '\n'); };
+    const KEYS = { right: '{RIGHT}', left: '{LEFT}', home: '{HOME}', end: '{END}', f5: '{F5}', escape: '{ESC}', enter: '{ENTER}' };
+    let ctrl = false;
+    return {
+      relative: true,
+      keyTap(k, mods = []) {
+        let s = KEYS[k] || k;
+        if (mods.includes('shift')) s = '+' + s;
+        if (ctrl || mods.includes('control')) s = '^' + s;
+        send({ k: s });
+      },
+      keyToggle(k, state) { if (k === 'control') ctrl = state === 'down'; },
+      mouseMove(dx, dy) { send({ mv: 1, dx: Math.round(dx), dy: Math.round(dy) }); },
+      mouseClick() { send({ ck: 1 }); },
+    };
+  } catch {
+    return null;
+  }
+}
+
 function moveMouseRelative(dx, dy) {
   if (!Number.isFinite(dx) || !Number.isFinite(dy)) return;
   const clampedDx = Math.max(-MAX_MOUSE_DELTA, Math.min(MAX_MOUSE_DELTA, dx));
   const clampedDy = Math.max(-MAX_MOUSE_DELTA, Math.min(MAX_MOUSE_DELTA, dy));
+  if (robot.relative) { robot.mouseMove(clampedDx, clampedDy); return; }
   const pos = robot.getMousePos();
   const screen = robot.getScreenSize();
   const x = Math.max(0, Math.min(screen.width, pos.x + clampedDx));
