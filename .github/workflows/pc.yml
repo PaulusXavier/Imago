@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   pc:
-    runs-on: windows-2022
+    runs-on: windows-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -24,15 +24,10 @@ jobs:
         with:
           node-version: '18'
 
-      # Python 3.11 e Visual Studio 2022: combinação que o node-gyp sabe usar.
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Instalar dependências (compila o robotjs)
-        env:
-          npm_config_msvs_version: '2022'
-        run: npm ci --no-audit --no-fund
+      # --ignore-scripts: não compila o robotjs. O Imago usa PowerShell para
+      # teclado/mouse, então não há arquivo nativo sem assinatura para o Windows bloquear.
+      - name: Instalar dependências
+        run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Gerar o Imago.exe
         run: npm run build:win
