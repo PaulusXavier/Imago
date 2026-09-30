@@ -1,9 +1,18 @@
 {
-  "version": "2.6.1",
-  "notes": "Relay sem loop de mensagens: detecção de configuração e reconexão com backoff progressivo.",
+  "version": "2.7.0",
+  "notes": "Wi-Fi local pelo navegador (o PC serve o app), notas/titulos na ordem certa, reconexao Bluetooth automatica, correcoes de estabilidade.",
   "downloads": {
-    "win": { "url": "", "sha256": "" },
-    "mac": { "url": "", "sha256": "" },
-    "linux": { "url": "", "sha256": "" }
+    "win": {
+      "url": "",
+      "sha256": ""
+    },
+    "mac": {
+      "url": "",
+      "sha256": ""
+    },
+    "linux": {
+      "url": "",
+      "sha256": ""
+    }
   }
 }
