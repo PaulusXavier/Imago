@@ -77,7 +77,19 @@ A cada novo commit o APK é regerado no mesmo link.
 
 Teclas enviadas: → ← (slides), Home/End, F5, Esc, B, W, Ctrl+L (laser) e número+Enter (ir para slide).
 
-## Novidades desta versão
+## Novidades da versão 2.7
+
+- **Wi-Fi funciona pelo navegador:** o `Imago.exe` agora serve a tela do celular pela própria rede local (`http://IP-do-PC:8765`). O QR code aponta para ele, então abre na hora, funciona **sem internet** e sem o bloqueio de "conteúdo misto" que impedia uma página HTTPS (GitHub Pages) de abrir `ws://` no Chrome/Safari (iPhone incluído). O link do site publicado continua impresso, para uso por dados móveis.
+- **Abrir pelo QR já conecta** (sem tocar em Conectar) e o código de segurança some da barra de endereços.
+- **Notas e títulos corretos:** o `.pptx` é lido na ordem real dos slides (antes, slides reordenados no PowerPoint apareciam trocados), o título vem do marcador de título e a primeira linha das notas não se perde mais.
+- **Bluetooth:** a reconexão automática ao abrir o app agora entra sozinha no controle; arrastes lentos do laser não são mais "engolidos".
+- **Estabilidade do PC:** uma mensagem malformada ou gigante vinda da rede não derruba mais o Imago (era possível sem autenticar); vários celulares recebem os slides ao mesmo tempo.
+- **IP certo no QR:** adaptadores virtuais (Hyper-V/WSL, VirtualBox, VPN) deixam de ser escolhidos; os demais endereços aparecem no terminal.
+- **Atualização automática do PC:** o processo que troca os arquivos agora roda de uma cópia temporária (o `.exe` em uso não podia ser sobrescrito no Windows).
+- **GitHub Actions:** o `pc.yml` tinha `secrets` dentro de `if:` (o GitHub rejeita o workflow inteiro); corrigido. Os dois workflows rodam `npm test`, e o `apk.yml` solto na raiz foi removido (a versão certa fica em `.github/workflows/`).
+- Assistente de configuração encontra `.pptx` em pastas dentro do OneDrive; `versionName` do APK vem do `package.json`; backup automático do Android desligado (o app guarda o código de segurança).
+
+## Novidades da versão 2.x
 
 - **Toque no touchpad = clique do mouse** (Prezi, vídeos, links).
 
@@ -124,13 +136,13 @@ Tudo na raiz, exceto o projeto Android e o workflow:
 
 - `relay-server.js` — servidor relay (modo internet)
 
-- `logic_test.js` — testes da lógica de segurança/atualização (`npm test`)
+- `logic_test.js` e `modules_test.js` — testes da lógica de segurança/atualização e do código real de leitura do `.pptx` e escolha do IP (`npm test`)
 
 - `package.json` — um só para tudo (app Android, PC e relay)
 
 - `capacitor.config.json` e `android/` — projeto Android (Capacitor) com `ImagoHidPlugin.java` (teclado + mouse Bluetooth)
 
-- `.github/workflows/apk.yml` — gera o APK no GitHub
+- `.github/workflows/apk.yml` e `pc.yml` — geram o APK e o `Imago.exe` no GitHub
 
 # Modo Wi-Fi / internet (PC)
 
