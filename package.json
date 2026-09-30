@@ -1,6 +1,6 @@
 {
   "name": "imago",
-  "version": "2.0.0",
+  "version": "2.3.0",
   "private": true,
   "description": "Imago - controle remoto de apresentacoes (Bluetooth + Wi-Fi): app Android, app web, programa do PC e relay",
   "main": "controller.js",
@@ -21,15 +21,18 @@
   },
   "dependencies": {
     "@capacitor/android": "^8.5.2",
-    "@capacitor/cli": "^8.5.2",
     "@capacitor/core": "^8.5.2",
-    "adm-zip": "^0.5.16",
+    "adm-zip": "^0.6.1",
     "qrcode-terminal": "^0.12.0",
     "robotjs": "^0.6.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.2",
     "pkg": "^5.8.1"
+  },
+  "optionalDependencies": {
+    "@stoprocent/bleno": "^0.13.1"
   },
   "pkg": {
     "scripts": [
