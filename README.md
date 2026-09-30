@@ -246,11 +246,17 @@ Depois que a configuração única acima foi feita por alguém, usar o Imago fic
 
 #### No PC (toda vez que for apresentar)
 
+1. Depois de baixar o ZIP, clique nele com o botão direito → **Propriedades** → marque **Desbloquear** (se aparecer) → **Aplicar**. Isso evita que o Windows carregue o bloqueio de arquivo baixado para todos os arquivos extraídos.
+
 1. Extraia o ZIP inteiro do Imago — não abra o executável de dentro do ZIP — de preferência em Área de Trabalho ou Documentos.
 
 1. Dê duplo clique no **Imago** (`Imago.exe` no Windows) ou em **Iniciar Imago.bat**. Uma janela preta com o QR code aparece; deixe-a aberta.
 
 1. *(Opcional, só na primeira vez com aquela apresentação)* Para ativar notas do apresentador e miniaturas dos slides: arraste o arquivo `.pptx` para cima do ícone do Imago, ou dê duplo clique em **Configurar.bat** e escolha o arquivo na lista. Sem isso, a navegação de slides já funciona normalmente.
+
+> O executável distribuído ainda não possui assinatura digital de um fornecedor reconhecido. Se o **Controle inteligente de aplicativos** bloquear o Imago mesmo depois de desbloquear o ZIP, não há um botão seguro de “Executar assim mesmo” nessa tela: a solução definitiva é publicar o `.exe` com certificado de assinatura de código confiável. Para um build pessoal, use apenas um arquivo que você baixou da fonte que confia e consulte **Segurança do Windows → Controle de aplicativos e navegador → Controle inteligente de aplicativos**; evite desativar essa proteção em um computador que você não administra.
+
+O pacote também inclui `Imago.exe.sha256`. Para conferir o arquivo no PowerShell, rode `Get-FileHash .\Imago.exe -Algorithm SHA256` e compare o valor com esse arquivo. No workflow de publicação, a assinatura Authenticode é aplicada automaticamente quando os secrets `WINDOWS_CERTIFICATE_BASE64` e `WINDOWS_CERTIFICATE_PASSWORD` estão configurados; sem esses secrets, o executável continua sem assinatura digital.
 
 #### Conectando os dois
 
