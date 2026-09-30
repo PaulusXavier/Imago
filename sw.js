@@ -1,11 +1,13 @@
 // Aumente o numero de CACHE_NAME para forcar quem esta offline ha muito tempo a
 // baixar os arquivos novos. Com internet o "fetch" abaixo ja atualiza o cache sozinho.
-const CACHE_NAME = 'imago-cache-v15';
-const ASSETS = ['./', './index.html', './app.js', './sw.js', './capacitor.js', './manifest.json', './version.json', './icon.svg', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png'];
+const CACHE_NAME = 'imago-cache-v17';
+const ASSETS = ['./', './index.html', './app.js', './sw.js', './capacitor.js', './jsqr.min.js', './manifest.json', './version.json', './icon.svg', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
+    // Um arquivo que falte (ex.: upload incompleto no GitHub) nao pode impedir o service
+    // worker de instalar -- sem ele o Chrome nao oferece "Instalar app".
+    caches.open(CACHE_NAME).then((cache) => Promise.all(ASSETS.map((a) => cache.add(a).catch(() => {}))))
   );
   self.skipWaiting();
 });
@@ -49,7 +51,9 @@ self.addEventListener('fetch', (event) => {
       .catch(() =>
         caches
           .match(key)
-          .then((cached) => cached || caches.match('./index.html'))
+          // So paginas (navegacao) caem no index.html; devolver HTML no lugar de um
+          // .js/.png que faltou no cache quebraria o app com um erro de sintaxe.
+          .then((cached) => cached || (req.mode === 'navigate' ? caches.match('./index.html') : undefined))
           .then((cached) => cached || Response.error())
       )
   );
