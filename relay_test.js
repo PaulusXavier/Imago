@@ -148,6 +148,26 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await closed;
   });
 
+  await test('limite de conexoes NAO pode ser burlado forjando o X-Forwarded-For', async () => {
+    // Um proxy confiavel acrescenta o IP real (9.9.9.9) NO FIM; o que o cliente
+    // escreve antes disso (aqui, um IP diferente a cada tentativa) deve ser ignorado.
+    const codes = [];
+    for (let i = 0; i < 25; i++) {
+      const code = await new Promise((resolve) => {
+        const ws = new WebSocket(url, { headers: { 'X-Forwarded-For': `1.2.3.${i}, 9.9.9.9` } });
+        ws.on('error', () => resolve('erro'));
+        ws.on('close', (c) => resolve(c));
+        ws.on('open', () => setTimeout(() => ws.close(1000), 50));
+      });
+      codes.push(code);
+    }
+    assert.ok(codes.includes(4029), `nenhuma conexao foi limitada: ${codes.join(',')}`);
+    // Quem NAO passa por proxy (sem header) continua com o seu proprio limite.
+    const other = await connect(url).catch(() => null);
+    assert.ok(other, 'conexao sem header deveria continuar aceita');
+    other.ws.close();
+  });
+
   relay.kill();
   console.log(`\n${passed} teste(s) do relay passaram.`);
 })().catch((err) => {
