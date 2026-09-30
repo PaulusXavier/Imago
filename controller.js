@@ -550,6 +550,7 @@ const STATIC_FILES = {
   '/index.html': ['index.html', 'text/html; charset=utf-8'],
   '/app.js': ['app.js', 'application/javascript; charset=utf-8'],
   '/capacitor.js': ['capacitor.js', 'application/javascript; charset=utf-8'],
+  '/jsqr.min.js': ['jsqr.min.js', 'application/javascript; charset=utf-8'],
   '/manifest.json': ['manifest.json', 'application/manifest+json; charset=utf-8'],
   '/version.json': ['version.json', 'application/json; charset=utf-8'],
   '/icon.svg': ['icon.svg', 'image/svg+xml'],
