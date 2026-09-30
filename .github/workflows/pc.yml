@@ -32,6 +32,15 @@ jobs:
       - name: Gerar o Imago.exe
         run: npm run build:win
 
+      - name: Validar pasta do PC
+        shell: powershell
+        run: |
+          $required = @('Imago.exe', 'Configurar.bat', 'Iniciar Imago.bat', 'LEIA-ME.txt', 'input-bridge.ps1', 'office-bridge.ps1')
+          foreach ($file in $required) {
+            if (-not (Test-Path (Join-Path 'dist/win' $file))) { throw "Arquivo obrigatório ausente: $file" }
+          }
+          if (-not (Test-Path 'dist/win/node_modules/robotjs')) { throw 'Pasta robotjs ausente' }
+
       - name: Compactar a pasta do PC
         run: Compress-Archive -Path dist/win/* -DestinationPath Imago-PC-Windows.zip
 
