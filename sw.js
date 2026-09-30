@@ -5,8 +5,8 @@
 // atualiza o cache sozinho quando online -- so precisa bumpar esse numero
 // se quiser forcar uma atualizacao imediata pra quem esta offline ha muito
 // tempo com uma versao bem antiga em cache.
-const CACHE_NAME = 'remote-cache-v13';
-const ASSETS = ['./', './index.html', './app.js', './capacitor.js', './manifest.json', './icon.svg', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png'];
+const CACHE_NAME = 'imago-cache-v14';
+const ASSETS = ['./', './index.html', './app.js', './sw.js', './capacitor.js', './manifest.json', './version.json', './icon.svg', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
