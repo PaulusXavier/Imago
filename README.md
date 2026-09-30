@@ -89,6 +89,21 @@ Teclas enviadas: → ← (slides), Home/End, F5, Esc, B, W, Ctrl+L (laser) e nú
 - **GitHub Actions:** o `pc.yml` tinha `secrets` dentro de `if:` (o GitHub rejeita o workflow inteiro); corrigido. Os dois workflows rodam `npm test`, e o `apk.yml` solto na raiz foi removido (a versão certa fica em `.github/workflows/`).
 - Assistente de configuração encontra `.pptx` em pastas dentro do OneDrive; `versionName` do APK vem do `package.json`; backup automático do Android desligado (o app guarda o código de segurança).
 
+### Correções da revisão de código (sobre a 2.7)
+
+- **Web Bluetooth:** títulos e notas com acento (ã, é, ç…) chegavam corrompidos (`��`) quando o texto era dividido em pacotes de 20 bytes; agora o texto é remontado corretamente. Se a autenticação falha, a conexão Bluetooth também é encerrada (antes ficava aberta no PC).
+- **App abre mesmo com o armazenamento do navegador bloqueado** (modo privado / cookies bloqueados): antes uma exceção no `localStorage` derrubava a tela inteira.
+- **Reconexão:** tocar em *Desconectar* durante uma tentativa de reconexão não deixa mais uma conexão "fantasma" ativa no PC. O aviso de reconexão volta ao texto normal depois de usar o Bluetooth.
+- **Laser:** desconectar com a aba *Laser* aberta desliga o laser (antes ficava preso no PowerPoint).
+- **Touchpad:** os movimentos são somados e enviados ~60 vezes por segundo também por Wi-Fi, internet e Web Bluetooth (o cursor deixa de atrasar pelo relay).
+- **Cronômetro pausado** não é mais sobrescrito pelo tempo do PowerPoint; atalhos com Ctrl/Alt (ex.: Alt+← do navegador) não trocam mais de slide; a prévia do próximo slide também aparece fora do modo Office.
+- **PC:** o histórico da apresentação em andamento é salvo em qualquer forma de encerramento (SIGTERM/SIGHUP/fechar a janela; antes só no Ctrl+C); *Iniciar deste slide* não zera mais o contador; o código de segurança é sorteado de forma uniforme.
+- **Miniaturas (macOS/Linux):** o LibreOffice roda com perfil próprio (não conflita com um LibreOffice já aberto), tem limite de tempo (3 min) e o aviso final não é mais duplicado.
+- **Atualização automática:** um download cortado no meio agora falha com mensagem em vez de travar; o `chmod` só mexe no executável `Imago`.
+- **Relay:** o celular não consegue mais se passar pelo próprio relay (mensagens como `phone-disconnected`/`session-created` enviadas por ele são descartadas).
+- **Android:** campos compartilhados entre threads do `ImagoHidPlugin` agora são `volatile`.
+- **Testes:** `logic_test.js` passou a testar o código real do atualizador (antes testava cópias); novos testes de integração do relay e do controller. Comentários desatualizados (`updater.js`, `office.js`, "4 dígitos") corrigidos.
+
 ## Novidades da versão 2.x
 
 - **Toque no touchpad = clique do mouse** (Prezi, vídeos, links).
@@ -136,7 +151,7 @@ Tudo na raiz, exceto o projeto Android e o workflow:
 
 - `relay-server.js` — servidor relay (modo internet)
 
-- `logic_test.js` e `modules_test.js` — testes da lógica de segurança/atualização e do código real de leitura do `.pptx` e escolha do IP (`npm test`)
+- `logic_test.js`, `modules_test.js`, `relay_test.js` e `controller_test.js` — testes (`npm test`): segurança/atualização (código real do `modules.js`), leitura do `.pptx`, escolha do IP, o relay de verdade e o programa do PC de verdade (com um `robotjs` de mentira)
 
 - `package.json` — um só para tudo (app Android, PC e relay)
 
