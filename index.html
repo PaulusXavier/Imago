@@ -456,10 +456,162 @@ input.invalid { border-color: var(--danger); }
 .pc-download { margin-top: 6px; }
 .pc-download p { margin: 0 0 10px; font-size: 13px; color: var(--muted); line-height: 1.45; }
 .pc-link { background: transparent; color: var(--ok); border: 1.5px solid var(--ok); box-shadow: none; font-size: 15px; padding: 13px; }
+  /* ---------- Redesign visual v3 ---------- */
+  :root {
+    --bg: #0b1020;
+    --card: #141c31;
+    --text: #f7f8fc;
+    --muted: #9aa7bf;
+    --primary: #ff8a4c;
+    --primary-text: #1a1020;
+    --danger: #ff6680;
+    --ok: #32d4bd;
+    --line: #2a3653;
+    --surface-soft: rgba(255,255,255,.045);
+    --shadow: 0 18px 50px rgba(0,0,0,.28);
+  }
+  body {
+    background:
+      radial-gradient(circle at 12% 0%, rgba(109,93,252,.22), transparent 34%),
+      radial-gradient(circle at 100% 18%, rgba(255,138,76,.12), transparent 30%),
+      var(--bg);
+  }
+  #status-bar {
+    position: sticky;
+    top: max(10px, env(safe-area-inset-top, 0px));
+    width: min(448px, calc(100% - 28px));
+    margin: 10px auto 0;
+    padding: 10px 15px;
+    background: rgba(20,28,49,.78);
+    border: 1px solid rgba(154,167,191,.2);
+    box-shadow: 0 10px 30px rgba(0,0,0,.18);
+    backdrop-filter: blur(18px);
+  }
+  .screen { padding: 28px 18px 44px; }
+  #connect-screen { padding-top: 34px; }
+  .brand { gap: 13px; margin-bottom: 8px; }
+  .brand img { width: 48px; height: 48px; border-radius: 15px; box-shadow: 0 10px 24px rgba(0,0,0,.3); }
+  h1 { font-size: clamp(32px, 9vw, 40px); letter-spacing: -.045em; }
+  .subtitle { color: var(--muted); font-size: 14px; letter-spacing: .01em; }
+  #install-card, .bt-card, #wifi-card, #slide-info, #next-preview, .history-item, .office-row {
+    box-shadow: var(--shadow);
+  }
+  #install-card, .bt-card { border-color: rgba(154,167,191,.2); }
+  .bt-card { background: linear-gradient(145deg, rgba(50,212,189,.11), rgba(20,28,49,.94) 58%); }
+  #wifi-card { background: rgba(20,28,49,.68); border-color: rgba(154,167,191,.2); }
+  #wifi-card summary { padding: 4px 0; color: var(--text); }
+  input, textarea, #office-docs, #bt-device {
+    background: rgba(7,12,27,.5);
+    border-color: var(--line);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.035);
+  }
+  input::placeholder, textarea::placeholder { color: #71809b; }
+  input:focus, textarea:focus { box-shadow: 0 0 0 4px rgba(255,138,76,.14); }
+  button { transition: transform .18s ease, filter .18s ease, background .18s ease, border-color .18s ease; }
+  button:hover:not(:disabled) { filter: brightness(1.08); }
+  button:active:not(:disabled) { transform: translateY(1px) scale(.985); }
+  button:disabled { cursor: wait; filter: saturate(.6); }
+  #btn-bt-connect, #btn-connect {
+    background: linear-gradient(135deg, #ff9a5c, #ff7043);
+    box-shadow: 0 12px 28px rgba(255,112,67,.24);
+  }
+  .tabs {
+    position: sticky;
+    top: 62px;
+    z-index: 5;
+    background: rgba(20,28,49,.82);
+    border-color: rgba(154,167,191,.2);
+    box-shadow: 0 12px 28px rgba(0,0,0,.2);
+    backdrop-filter: blur(18px);
+  }
+  .tab { min-height: 42px; }
+  .tab.active { background: linear-gradient(135deg, #ff9a5c, #ff7043); }
+  #slide-info { background: linear-gradient(135deg, rgba(255,138,76,.12), rgba(20,28,49,.96) 55%); }
+  #slide-progress { background: rgba(154,167,191,.18); height: 5px; }
+  #slide-progress-bar { background: linear-gradient(90deg, var(--ok), #7ce8d6); }
+  .nav-row { gap: 10px; }
+  .nav-btn { min-height: 76px; padding: 20px 10px !important; background: rgba(20,28,49,.9); }
+  #btn-next { background: linear-gradient(135deg, #ff9a5c, #ff7043); }
+  .small-btn { background: var(--surface-soft); }
+  #touchpad { background-color: rgba(20,28,49,.78); border-color: var(--line); }
+  .thumb-item, .history-item, .office-row, #next-preview { background: rgba(20,28,49,.82); }
+  .hint { line-height: 1.5; }
+  #reconnect-banner { box-shadow: 0 10px 24px rgba(255,102,128,.2); }
+  body.bt-mode #reconnect-banner { cursor: pointer; }
+  #bt-steps { display: grid; gap: 7px; margin: 14px 0 16px; }
+  .bt-step { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; transition: color .2s ease, opacity .2s ease; }
+  .bt-step b { display: grid; place-items: center; width: 24px; height: 24px; flex: 0 0 24px; border: 1px solid var(--line); border-radius: 50%; font-size: 12px; }
+  .bt-step.active { color: var(--text); font-weight: 700; }
+  .bt-step.active b { color: var(--primary-text); background: var(--primary); border-color: var(--primary); }
+  .bt-step.done { color: var(--ok); }
+  .bt-step.done b { color: #07141a; background: var(--ok); border-color: var(--ok); }
+  @media (max-width: 360px) {
+    .screen { padding-left: 14px; padding-right: 14px; }
+    .nav-btn { font-size: 17px; }
+    .extra-row { gap: 6px; }
+    .small-btn { font-size: 12px; padding-left: 4px; padding-right: 4px; }
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f4f6fb;
+      --card: #ffffff;
+      --text: #172033;
+      --muted: #64718a;
+      --line: #dce3ef;
+      --surface-soft: #f4f6fb;
+      --shadow: 0 16px 36px rgba(31,45,77,.10);
+    }
+    body { background: radial-gradient(circle at 0% 0%, rgba(109,93,252,.12), transparent 38%), var(--bg); }
+    #status-bar, .tabs, #wifi-card, .bt-card, #slide-info, #next-preview, .history-item, .office-row, .thumb-item { background-color: rgba(255,255,255,.86); }
+    input, textarea, #office-docs, #bt-device { background: #fff; }
+  }
+  /* ---------- Refinamento visual v3.2 ---------- */
+  body { -webkit-tap-highlight-color: transparent; }
+  .screen { animation: screen-in .35s ease both; }
+  @keyframes screen-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  #install-card { padding: 20px; background: linear-gradient(145deg, rgba(109,93,252,.16), rgba(20,28,49,.94) 65%); }
+  #install-card h2 { font-size: 20px; letter-spacing: -.02em; }
+  #install-card p { margin-bottom: 14px; }
+  .install-link { background: linear-gradient(135deg, #ff9a5c, #ff7043); border-radius: 15px; box-shadow: 0 12px 24px rgba(255,112,67,.22); }
+  .pc-download { padding-top: 14px; border-top: 1px solid var(--line); }
+  .pc-download .pc-link { background: transparent; box-shadow: none; }
+  .bt-card { position: relative; overflow: hidden; }
+  .bt-card::after { content: ''; position: absolute; width: 150px; height: 150px; right: -70px; top: -70px; border-radius: 50%; background: rgba(50,212,189,.12); pointer-events: none; }
+  #bt-message { min-height: 22px; margin-bottom: 4px; }
+  #btn-bt-refresh { width: 100%; margin-bottom: 9px; color: var(--text); }
+  #btn-bt-connect { position: relative; z-index: 1; }
+  #timer { padding: 8px 18px; width: fit-content; margin: 0 auto 18px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-soft); box-shadow: 0 8px 20px rgba(0,0,0,.14); }
+  #slide-info { box-shadow: var(--shadow); }
+  .nav-btn { letter-spacing: -.01em; }
+  .extra-row { align-items: stretch; }
+  .extra-row .small-btn { min-width: 0; }
+  #notes { min-height: 104px; }
+  #network-mode { margin: 14px 0 18px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-soft); }
+  .network-mode-label { display: block; margin-bottom: 8px; font-size: 12px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .network-mode-buttons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .network-mode-btn { min-height: 38px; padding: 7px 5px; border: 1px solid var(--line); border-radius: 10px; background: transparent; color: var(--muted); font-size: 12px; font-weight: 700; }
+  .network-mode-btn.active { border-color: var(--primary); background: var(--primary); color: var(--primary-text); box-shadow: 0 7px 14px rgba(109,93,252,.18); }
+  #network-status { margin: 9px 0 0; line-height: 1.35; }
+  .web-ble-card { margin: 14px 0 18px; padding: 15px; border: 1px solid rgba(50,212,189,.38); border-radius: 15px; background: linear-gradient(145deg, rgba(50,212,189,.13), var(--surface-soft)); }
+  .web-ble-card h3 { margin: 0 0 6px; font-size: 16px; }
+  .web-ble-card .hint { margin: 0 0 11px; }
+  #web-ble-message { margin: 9px 0 0; }
+  .panel { animation: panel-in .25s ease both; }
+  @keyframes panel-in { from { opacity: .5; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  @media (max-width: 380px) {
+    #bt-steps { gap: 5px; }
+    .bt-step { font-size: 12px; }
+    .tabs { top: 58px; }
+    .tab { min-width: 68px; padding-left: 5px; padding-right: 5px; font-size: 12px; }
+    #timer { font-size: 38px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .screen, .panel { animation: none; }
+  }
   </style>
 </head>
 <body>
-  <div id="status-bar">
+  <div id="status-bar" role="status" aria-live="polite">
     <span id="status-dot"></span>
     <span id="status-text">Desconectado</span>
   </div>
@@ -478,7 +630,13 @@ input.invalid { border-color: var(--danger); }
     <div id="bt-card" class="bt-card hidden">
       <h2>Bluetooth <span class="badge">sem instalar nada no PC</span></h2>
       <p id="bt-message" class="hint">Iniciando Bluetooth…</p>
+      <div id="bt-steps" aria-label="Etapas para conectar por Bluetooth">
+        <div class="bt-step active" data-bt-step="1"><b>1</b><span>Pareie o celular com o PC</span></div>
+        <div class="bt-step" data-bt-step="2"><b>2</b><span>Escolha o computador</span></div>
+        <div class="bt-step" data-bt-step="3"><b>3</b><span>Comece a apresentação</span></div>
+      </div>
       <select id="bt-device" class="hidden"></select>
+      <button id="btn-bt-refresh" class="small-btn" type="button">Atualizar computadores pareados</button>
       <button id="btn-bt-connect">Conectar por Bluetooth</button>
       <button id="btn-bt-pair" class="link-btn">1ª vez? Parear com o PC (abre o Bluetooth do Android)</button>
       <p class="hint">No Windows: Configurações › Bluetooth › Adicionar dispositivo › escolha este celular. Só na primeira vez.</p>
@@ -489,8 +647,25 @@ input.invalid { border-color: var(--danger); }
     <div id="net-divider" class="divider hidden"><span>ou conecte pela rede</span></div>
 
     <details id="wifi-card" open>
-      <summary>Wi-Fi / internet <span class="badge">precisa do Imago no PC: notas, miniaturas, Office</span></summary>
+    <summary>Wi-Fi / internet <span class="badge">precisa do Imago no PC: notas, miniaturas, Office</span></summary>
     <button id="btn-quick" class="quick hidden" type="button"></button>
+
+    <div id="network-mode" aria-label="Escolher tipo de conexão">
+      <span class="network-mode-label">Usar conexão</span>
+      <div class="network-mode-buttons" role="group" aria-label="Tipo de conexão">
+        <button type="button" class="network-mode-btn active" data-network-mode="auto">Automático</button>
+        <button type="button" class="network-mode-btn" data-network-mode="wifi">Wi-Fi</button>
+        <button type="button" class="network-mode-btn" data-network-mode="internet">Dados móveis</button>
+      </div>
+      <p id="network-status" class="fhint">Automático: tenta Wi-Fi primeiro e usa a internet como reserva.</p>
+    </div>
+
+    <div id="web-ble-card" class="web-ble-card hidden">
+      <h3>Bluetooth pelo app web</h3>
+      <p class="hint">Use o Imago instalado no Chrome/Android. O PC precisa estar com o Imago aberto e com Bluetooth Low Energy disponível.</p>
+      <button id="btn-web-ble" type="button">Conectar Bluetooth web</button>
+      <p id="web-ble-message" class="fhint">A conexão será autorizada apenas depois de você escolher o dispositivo.</p>
+    </div>
 
     <div class="field">
       <label for="input-link">Colar link do PC</label>
@@ -535,12 +710,12 @@ input.invalid { border-color: var(--danger); }
       <div id="slide-notes"></div>
     </div>
 
-    <div class="tabs">
-      <button id="tab-slides" class="tab active">Slides</button>
-      <button id="tab-thumbs" class="tab">Miniaturas</button>
-      <button id="tab-laser" class="tab">Laser</button>
-      <button id="tab-office" class="tab">Office</button>
-      <button id="tab-history" class="tab">Histórico</button>
+    <div class="tabs" role="tablist" aria-label="Ferramentas da apresentação">
+      <button id="tab-slides" class="tab active" role="tab" aria-selected="true" aria-controls="slides-panel">Slides</button>
+      <button id="tab-thumbs" class="tab" role="tab" aria-selected="false" aria-controls="thumbs-panel">Miniaturas</button>
+      <button id="tab-laser" class="tab" role="tab" aria-selected="false" aria-controls="laser-panel">Laser</button>
+      <button id="tab-office" class="tab" role="tab" aria-selected="false" aria-controls="office-panel">Office</button>
+      <button id="tab-history" class="tab" role="tab" aria-selected="false" aria-controls="history-panel">Histórico</button>
     </div>
 
     <div id="slides-panel" class="panel">
