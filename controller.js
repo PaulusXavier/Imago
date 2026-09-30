@@ -99,6 +99,10 @@ const WEB_APP_URL = process.env.WEB_APP_URL || 'https://paulusxavier.github.io/I
 // "Publicando atualizacoes".
 const UPDATE_MANIFEST_URL = process.env.UPDATE_MANIFEST_URL || `${WEB_APP_URL.replace(/\/$/, '')}/version.json`;
 const CURRENT_VERSION = require('./package.json').version;
+const RELAY_NOT_CONFIGURED = /SEU-RELAY/i.test(RELAY_URL);
+let relayRetryTimer = null;
+let relayRetryDelayMs = 5000;
+let relayConfigWarningShown = false;
 
 // ---------- Codigo de seguranca da sessao ----------
 // Sem isso, qualquer aparelho na mesma rede Wi-Fi conseguiria se conectar
@@ -128,7 +132,7 @@ function safeEqual(a, b) {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
-if (RELAY_URL.includes('SEU-RELAY')) {
+if (RELAY_NOT_CONFIGURED) {
   console.log('[Aviso] RELAY_URL e/ou WEB_APP_URL ainda estao com o valor de exemplo.');
   console.log('        Se isso nao for so um teste local, configure-os antes de distribuir o instalavel');
   console.log('        (veja README > "Configuracao unica" > passo 3).\n');
@@ -636,9 +640,29 @@ localWss.on('connection', (ws) => {
 
 // ---------- 2) Conexao com o relay para uso via dados moveis ----------
 function connectRelay() {
-  const relayWs = new WebSocket(RELAY_URL, { maxPayload: 65536 });
+  if (RELAY_NOT_CONFIGURED) {
+    if (!relayConfigWarningShown) {
+      relayConfigWarningShown = true;
+      console.log('[Relay] Dados móveis desativados: configure RELAY_URL para usar internet. Wi-Fi local continua disponível.');
+    }
+    return;
+  }
+  if (relayRetryTimer) {
+    clearTimeout(relayRetryTimer);
+    relayRetryTimer = null;
+  }
+
+  let relayWs;
+  try {
+    relayWs = new WebSocket(RELAY_URL, { maxPayload: 65536 });
+  } catch (err) {
+    console.log(`[Relay] URL inválida ou relay indisponível: ${err.message}`);
+    scheduleRelayRetry();
+    return;
+  }
 
   relayWs.on('open', () => {
+    relayRetryDelayMs = 5000;
     relayWs.send(JSON.stringify({ type: 'register-pc' }));
   });
 
@@ -682,14 +706,24 @@ function connectRelay() {
   relayWs.on('close', () => {
     if (currentRelayWs === relayWs) currentRelayWs = null;
     relayAuthorized = false;
-    console.log('[Relay] Sem conexao com o relay (dados moveis indisponivel por enquanto). Tentando de novo em 5s...');
-    console.log('        A rede local/Wi-Fi continua funcionando normalmente enquanto isso.');
-    setTimeout(connectRelay, 5000);
+    scheduleRelayRetry();
   });
 
   relayWs.on('error', () => {
     // 'close' tambem sera chamado em seguida, a reconexao acontece la
   });
+}
+
+function scheduleRelayRetry() {
+  if (RELAY_NOT_CONFIGURED || relayRetryTimer) return;
+  const delay = relayRetryDelayMs;
+  relayRetryDelayMs = Math.min(Math.round(relayRetryDelayMs * 1.8), 120000);
+  console.log(`[Relay] Indisponível. Nova tentativa em ${Math.ceil(delay / 1000)}s; Wi-Fi local continua funcionando.`);
+  relayRetryTimer = setTimeout(() => {
+    relayRetryTimer = null;
+    connectRelay();
+  }, delay);
+  relayRetryTimer.unref?.();
 }
 
 function printConnectionInfo(relayCode) {
@@ -767,7 +801,7 @@ connectRelay();
 // caminho LibreOffice+Poppler fica so para macOS/Linux.
 if (!office.isSupported()) startThumbnailGeneration();
 updater.checkForUpdate({ manifestUrl: UPDATE_MANIFEST_URL, currentVersion: CURRENT_VERSION });
-console.log(`Conectando ao relay (modo dados moveis)... a rede local abre em seguida.`);
+if (!RELAY_NOT_CONFIGURED) console.log('Conectando ao relay (modo dados moveis)... a rede local abre em seguida.');
 
 // ---------- Encerramento: aplica atualizacao pendente (se houver) ----------
 // Cobre tanto fechar a janela do terminal (SIGINT/Ctrl+C, tratado como
