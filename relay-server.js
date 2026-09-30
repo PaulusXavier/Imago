@@ -25,6 +25,13 @@ const CODE_RANGE = 900000; // 6 digitos: 100000-999999
 const MAX_SESSIONS = 500; // limite de sessoes simultaneas, evita esgotar memoria
 const MAX_JOIN_ATTEMPTS_PER_CONN = 5; // tentativas de codigo por conexao antes de derrubar
 
+// Tipos de mensagem que SO o relay pode gerar. Se o celular (que so precisa do codigo
+// de 6 digitos para entrar) mandasse um deles, o PC trataria como se viesse do relay
+// (ex.: fingir "phone-disconnected" ou "session-created"). Por isso nao sao repassados.
+const RELAY_ONLY_TYPES = new Set([
+  'session-created', 'joined', 'error', 'phone-connected', 'phone-disconnected', 'pc-disconnected',
+]);
+
 // sessions: codigo -> { pc: ws|null, phone: ws|null, lastActivity: number }
 const sessions = new Map();
 
@@ -189,6 +196,7 @@ wss.on('connection', (ws, req) => {
     }
 
     // Depois que o papel esta definido, apenas repassa pro outro lado
+    if (RELAY_ONLY_TYPES.has(msg.type)) return;
     const session = sessions.get(code);
     if (!session) return;
     touch(session);
