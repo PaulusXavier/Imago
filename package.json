@@ -1,6 +1,6 @@
 {
   "name": "imago",
-  "version": "2.7.2",
+  "version": "2.7.4",
   "private": true,
   "description": "Imago - controle remoto de apresentacoes (Bluetooth + Wi-Fi): app Android, app web, programa do PC e relay",
   "main": "controller.js",
@@ -58,3 +58,4 @@
     "node": ">=18.0.0"
   }
 }
+
