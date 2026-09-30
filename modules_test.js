@@ -2,8 +2,11 @@
 // Diferente do logic_test.js, este importa as funcoes de verdade -- precisa de
 // "npm ci" antes (adm-zip). Rode com: npm test
 const assert = require('assert');
+// Aponta o LibreOffice para um programa que nao existe: assim o teste das miniaturas
+// nao depende de ele estar instalado (a variavel e lida quando o modules.js carrega).
+process.env.SOFFICE_PATH = 'imago-soffice-inexistente';
 const AdmZip = require('adm-zip');
-const { pptx, network } = require('./modules');
+const { pptx, network, thumbnails } = require('./modules');
 
 let passed = 0;
 function test(name, fn) {
@@ -96,5 +99,11 @@ test('prefere a rede real a adaptadores virtuais (Hyper-V/WSL/VirtualBox)', () =
 test('sem adaptador real, ainda devolve o virtual (melhor que nada)', () => assert.strictEqual(network.bestLocalIp({ 'vEthernet (WSL)': nic('172.20.208.1') }), '172.20.208.1'));
 test('aceita family numerico (Node 18.0-18.3 devolvia 4)', () => assert.strictEqual(network.bestLocalIp({ eth0: nic('10.0.0.7', false, 4) }), '10.0.0.7'));
 test('sem rede nenhuma devolve 127.0.0.1', () => assert.strictEqual(network.bestLocalIp({}), '127.0.0.1'));
+
+test('miniaturas: sem LibreOffice o aviso final vem UMA vez so, com o motivo certo', () => {
+  const calls = [];
+  thumbnails.generateThumbnails('/tmp/nao-importa.pptx', 3, () => {}, (ok, reason) => calls.push([ok, reason]));
+  assert.deepStrictEqual(calls, [[false, 'ferramentas-ausentes']]);
+});
 
 console.log(`\n${passed} teste(s) de modules.js passaram.`);
