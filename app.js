@@ -6,6 +6,10 @@ const RELAY_URL = 'wss://SEU-RELAY.onrender.com';
 // Declarado no topo para que send()/showControlScreen() possam usar sem risco.
 const isApk = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
 const BtHid = isApk ? window.Capacitor.registerPlugin('ImagoHid') : null;
+if ('serviceWorker' in navigator && !isApk) {
+  // Registrado cedo: um erro mais adiante neste arquivo nao pode impedir a instalacao do app.
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
 let btMode = false;
 let laserSens = 2.2;
 let toastTimer = null;
@@ -14,7 +18,7 @@ function toast(msg) {
   t.textContent = msg;
   t.classList.remove('hidden');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.add('hidden'), 4500);
+  toastTimer = setTimeout(() => t.classList.add('hidden'), 9000);
 }
 
 // localStorage pode lançar exceção (modo privado, cookies bloqueados, cota cheia).
@@ -120,7 +124,7 @@ function vibrate(ms = 15) {
 // tela inicial, abre em tela cheia sem barra do navegador), o mais parecido
 // possível com instalar o app do Office Remote no celular -- só que sem
 // precisar de loja de aplicativos.
-let deferredInstallPrompt = null;
+let deferredInstallPrompt = window.__imagoInstallEvent || null;
 const isStandalone =
   window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true;
 
@@ -132,6 +136,7 @@ if (isStandalone) {
     deferredInstallPrompt = event;
     els.btnInstall?.classList.remove('hidden');
   });
+  window.addEventListener('imago-installable', () => { deferredInstallPrompt = window.__imagoInstallEvent; });
   els.btnInstall?.addEventListener('click', async () => {
     if (!deferredInstallPrompt) {
       toast(
@@ -1560,13 +1565,17 @@ if (RELAY_NOT_CONFIGURED) els.inputCode.closest('.field')?.classList.add('hidden
   }
   document.getElementById('install-card').classList.remove('hidden');
   webBtn.addEventListener('click', async () => {
+    deferredInstallPrompt = deferredInstallPrompt || window.__imagoInstallEvent || null;
     if (!deferredInstallPrompt) {
-      toast('Toque no menu do navegador (⋮) e escolha "Instalar app" ou "Adicionar à tela inicial".');
+      toast(android || ios
+        ? 'Toque no menu do navegador (⋮ ou Compartilhar) e escolha "Instalar app" ou "Adicionar à tela inicial".'
+        : 'No computador: menu ⋮ do Chrome → "Transmitir, salvar e compartilhar" → "Instalar página como app…" (ou o ícone de instalar na barra de endereço).');
       return;
     }
     deferredInstallPrompt.prompt();
     await deferredInstallPrompt.userChoice;
     deferredInstallPrompt = null;
+    window.__imagoInstallEvent = null;
   });
   window.addEventListener('appinstalled', () => document.getElementById('install-card').classList.add('hidden'));
 })();
@@ -1795,10 +1804,6 @@ prefillFromStorage();
 // o Office Remote: escanear e pronto.
 if (openedFromQr && sessionToken && !isApk) {
   setTimeout(() => { if (!socket && !btMode) handleConnect(); }, 150);
-}
-
-if ('serviceWorker' in navigator && !isApk) {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 
 // Se a conexão cair por uma troca de rede, tenta retomar assim que o aparelho
