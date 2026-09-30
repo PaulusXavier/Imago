@@ -608,6 +608,140 @@ input.invalid { border-color: var(--danger); }
   @media (prefers-reduced-motion: reduce) {
     .screen, .panel { animation: none; }
   }
+  /* ---------- Tema Office Remote: claro, funcional e orientado a slides ---------- */
+  :root {
+    --bg: #f3f2f1;
+    --card: #ffffff;
+    --text: #252423;
+    --muted: #605e5c;
+    --line: #edebe9;
+    --surface-soft: #faf9f8;
+    --primary: #f25022;
+    --primary-text: #ffffff;
+    --ok: #107c10;
+    --danger: #d13438;
+    --shadow: 0 2px 7px rgba(0,0,0,.12), 0 12px 28px rgba(0,0,0,.06);
+  }
+  body { background: #f3f2f1; color: var(--text); font-family: "Segoe UI", system-ui, -apple-system, sans-serif; }
+  #status-bar { background: #ffffff; border-bottom: 3px solid #f25022; box-shadow: 0 1px 4px rgba(0,0,0,.08); color: #323130; }
+  #status-dot { width: 8px; height: 8px; background: #a19f9d; box-shadow: none; }
+  #status-dot.connected { background: #107c10; }
+  .screen { max-width: 520px; padding-top: 24px; }
+  .brand { gap: 10px; }
+  .brand img { width: 42px; height: 42px; border-radius: 4px; }
+  .brand h1 { color: #252423; font-size: 30px; letter-spacing: -.04em; }
+  .subtitle { color: #605e5c; font-size: 14px; }
+  #install-card, .bt-card, #wifi-card, #slide-info, #next-preview, .history-item, .office-row, .thumb-item { border: 1px solid #edebe9; border-radius: 6px; box-shadow: var(--shadow); }
+  #install-card { background: #ffffff; border-top: 4px solid #f25022; }
+  #install-card h2, .bt-card h2 { color: #323130; }
+  .badge { border: 0; border-radius: 3px; background: #fff4ce; color: #8a6116; font-size: 10px; }
+  .install-link { background: #f25022; border-radius: 4px; box-shadow: none; }
+  .pc-download .pc-link { color: #f25022; }
+  .bt-card { background: #ffffff; }
+  .bt-card::after { background: rgba(242,80,34,.08); }
+  #network-mode { background: #faf9f8; border-radius: 4px; }
+  .network-mode-btn { border-radius: 3px; }
+  .network-mode-btn.active { background: #f25022; border-color: #f25022; box-shadow: none; }
+  .web-ble-card { border-radius: 4px; background: #f7f7f7; border-color: #d2d0ce; }
+  button { border-radius: 4px; font-family: inherit; font-weight: 600; }
+  button:hover { filter: brightness(.97); }
+  button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid #0078d4; outline-offset: 2px; }
+  input, textarea, select { border-radius: 3px; border-color: #a19f9d; background: #ffffff; color: #252423; }
+  #btn-connect, #btn-bt-connect, #btn-web-ble { background: #f25022; border-color: #f25022; border-radius: 4px; box-shadow: none; }
+  #btn-bt-refresh, .small-btn { background: #ffffff; border-color: #a19f9d; border-radius: 4px; }
+  #control-screen { padding-top: 10px; }
+  #control-appbar { display: flex; align-items: center; gap: 7px; min-height: 42px; margin: 0 0 12px; padding: 0 4px 10px; border-bottom: 1px solid #d2d0ce; color: #323130; }
+  .office-mark { color: #ffffff; background: #f25022; padding: 4px 6px; border-radius: 2px; font-size: 11px; font-weight: 800; letter-spacing: .08em; }
+  .office-app-name { font-size: 14px; font-weight: 700; letter-spacing: .04em; }
+  #transport-chip { margin-left: auto; padding: 4px 8px; border-radius: 3px; background: #e1dfdd; color: #605e5c; font-size: 10px; font-weight: 700; }
+  #timer { color: #323130; background: #ffffff; border: 1px solid #d2d0ce; border-radius: 4px; box-shadow: var(--shadow); font-size: 34px; font-weight: 300; letter-spacing: .04em; }
+  #slide-info { background: #ffffff; border-left: 4px solid #f25022; box-shadow: var(--shadow); }
+  #slide-progress { background: #edebe9; }
+  #slide-progress-bar { background: #f25022; }
+  .tabs { background: #ffffff; border: 1px solid #edebe9; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,.06); }
+  .tab { color: #605e5c; border-radius: 2px; }
+  .tab.active { background: #fff4ce; color: #323130; border-bottom: 3px solid #f25022; }
+  .nav-row { gap: 8px; }
+  .nav-btn { min-height: 76px; border: 1px solid #d2d0ce; border-radius: 4px; background: #ffffff; color: #323130; box-shadow: 0 2px 5px rgba(0,0,0,.08); font-size: 18px; }
+  #btn-next { background: #f25022; border-color: #f25022; color: #ffffff; }
+  #touchpad { border: 1px solid #d2d0ce; border-radius: 4px; background: #ffffff; box-shadow: inset 0 1px 3px rgba(0,0,0,.04); }
+  #reconnect-banner { border-radius: 4px; background: #fff4ce; color: #8a6116; box-shadow: none; }
+  .panel { background: transparent; }
+  .thumb-item.current { outline: 3px solid #f25022; outline-offset: 1px; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="dark"]) { --bg: #f3f2f1; --card: #ffffff; --text: #252423; --muted: #605e5c; --line: #edebe9; --surface-soft: #faf9f8; }
+  }
+  /* ---------- Polimento de produto v5: foco total na apresentação ---------- */
+  html { background: #f3f2f1; }
+  body { min-height: 100dvh; padding-bottom: env(safe-area-inset-bottom); }
+  #status-bar { position: sticky; top: 0; z-index: 20; min-height: 34px; padding: 7px 16px; font-size: 11px; letter-spacing: .01em; }
+  .screen { width: min(100% - 28px, 520px); margin: 0 auto; }
+  #connect-screen { padding-bottom: 30px; }
+  .brand { margin-top: 12px; }
+  .brand h1 { font-weight: 750; }
+  .subtitle { margin-top: 3px; }
+  #install-card, .bt-card, #wifi-card { margin-top: 18px; }
+  #install-card { padding: 20px; }
+  #install-card h2 { margin-top: 0; font-size: 19px; }
+  .bt-card { padding: 18px; }
+  .bt-card h2 { margin-top: 0; font-size: 18px; }
+  .bt-card .hint { line-height: 1.45; }
+  #bt-steps { margin: 18px 0 16px; }
+  .bt-step { min-height: 42px; padding: 9px 10px; border: 1px solid #edebe9; border-radius: 4px; background: #faf9f8; }
+  .bt-step.active { border-color: #f25022; background: #fff4ce; }
+  .bt-step.done { border-color: #a9d18e; background: #f0f8eb; }
+  .bt-step b { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #d2d0ce; color: #323130; }
+  .bt-step.active b { background: #f25022; color: #fff; }
+  #wifi-card { overflow: hidden; background: #fff; }
+  #wifi-card > summary { padding: 17px 18px; background: #fff; font-size: 16px; font-weight: 750; }
+  #wifi-card[open] > summary { border-bottom: 1px solid #edebe9; }
+  #wifi-card > :not(summary) { margin-left: 18px; margin-right: 18px; }
+  #wifi-card > #network-mode, #wifi-card > #web-ble-card { margin-left: 18px; margin-right: 18px; }
+  #network-mode { padding: 14px; }
+  .network-mode-buttons { gap: 4px; }
+  .network-mode-btn { min-height: 42px; font-size: 12px; }
+  .field { margin-top: 15px; }
+  .field label, .network-mode-label, .sens-row { color: #605e5c; font-size: 11px; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; }
+  input, textarea, select { min-height: 42px; padding: 10px 12px; font-size: 15px; }
+  textarea { line-height: 1.45; }
+  #btn-connect, #btn-bt-connect, #btn-web-ble { min-height: 46px; margin-top: 8px; font-size: 15px; }
+  #control-screen { width: min(100% - 20px, 560px); padding-bottom: 36px; }
+  #control-appbar { position: sticky; top: 34px; z-index: 15; margin: 0 -2px 14px; padding: 10px 4px; background: rgba(243,242,241,.96); backdrop-filter: blur(10px); }
+  #transport-chip { max-width: 145px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #timer { margin-bottom: 12px; padding: 7px 18px; font-variant-numeric: tabular-nums; }
+  #slide-info { padding: 17px 18px 15px; }
+  #slide-counter { font-size: 12px; font-weight: 750; color: #605e5c; text-transform: uppercase; letter-spacing: .05em; }
+  #slide-title { margin-top: 13px; font-size: clamp(21px, 5vw, 28px); line-height: 1.12; font-weight: 700; letter-spacing: -.025em; }
+  #slide-notes { margin-top: 10px; max-height: 104px; overflow: auto; color: #605e5c; line-height: 1.45; }
+  .tabs { position: sticky; top: 86px; z-index: 12; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; margin: 14px 0 12px; padding: 3px; }
+  .tab { min-width: 0; min-height: 42px; padding: 7px 3px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .tab.active { border-bottom-width: 2px; }
+  .panel { min-height: 120px; }
+  #next-preview { display: grid; grid-template-columns: 68px 1fr; align-items: center; gap: 10px; min-height: 66px; padding: 10px 12px; margin-bottom: 12px; background: #faf9f8; border-left: 3px solid #a19f9d; }
+  #next-preview-label { color: #605e5c; font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+  #next-preview-img { width: 68px; height: 42px; grid-row: 1 / span 2; object-fit: cover; border: 1px solid #d2d0ce; border-radius: 2px; }
+  #next-preview-title { overflow: hidden; font-size: 13px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+  .nav-row { grid-template-columns: 1fr 1fr; }
+  .nav-btn { min-height: 82px; font-size: 17px; }
+  .nav-btn:active, .small-btn:active, #btn-connect:active, #btn-web-ble:active { transform: translateY(1px); }
+  .extra-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
+  .extra-row .small-btn { min-height: 40px; padding: 7px 4px; font-size: 11px; }
+  #touchpad { min-height: 300px; display: grid; place-items: center; background: radial-gradient(circle at center, #fff 0, #faf9f8 72%); }
+  #touchpad-label { padding: 12px 18px; border: 1px dashed #c8c6c4; border-radius: 4px; color: #797775; font-size: 12px; line-height: 1.5; }
+  .sens-row { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+  .sens-row input { flex: 1; min-height: 0; padding: 0; }
+  #notes { width: 100%; box-sizing: border-box; background: #fffdf5; border-color: #e8d8a7; }
+  #btn-disconnect { display: block; width: 100%; margin-top: 24px; padding-top: 14px; border-top: 1px solid #d2d0ce; color: #a4262c; text-align: center; }
+  #thumbs-grid { gap: 10px; }
+  .thumb-item { overflow: hidden; background: #fff; }
+  .thumb-item.current { outline-width: 2px; }
+  @media (max-width: 380px) {
+    .screen { width: min(100% - 20px, 520px); }
+    #control-screen { width: min(100% - 14px, 560px); }
+    .tab { font-size: 10px; }
+    .nav-btn { min-height: 72px; font-size: 15px; }
+    .extra-row .small-btn { font-size: 10px; }
+  }
   </style>
 </head>
 <body>
@@ -642,7 +776,7 @@ input.invalid { border-color: var(--danger); }
       <p class="hint">No Windows: Configurações › Bluetooth › Adicionar dispositivo › escolha este celular. Só na primeira vez.</p>
     </div>
 
-    <div id="web-bt-hint" class="hint hidden">Bluetooth só funciona no app Android (APK) do Imago. Aqui no navegador use o modo Wi-Fi/internet abaixo.</div>
+    <div id="web-bt-hint" class="hint hidden">No Chrome/Android, o Bluetooth web pode ser usado pelo cartão abaixo. Em outros navegadores, use Wi-Fi ou internet.</div>
 
     <div id="net-divider" class="divider hidden"><span>ou conecte pela rede</span></div>
 
@@ -700,6 +834,7 @@ input.invalid { border-color: var(--danger); }
 
   <!-- Tela de controle -->
   <section id="control-screen" class="screen hidden">
+    <div id="control-appbar"><span class="office-mark">IMAGO</span><span class="office-app-name">REMOTE</span><span id="transport-chip">Desconectado</span></div>
     <div id="reconnect-banner" class="hidden">Reconectando…</div>
     <div id="timer" title="Toque: pausar/continuar · Duplo toque: zerar">00:00</div>
 
