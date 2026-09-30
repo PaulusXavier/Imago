@@ -53,11 +53,11 @@ jobs:
           }
           if (-not (Test-Path 'dist/win/node_modules/robotjs')) { throw 'Pasta robotjs ausente' }
 
-      - name: Exigir certificado de assinatura para publicar
+      - name: Avisar quando o certificado não estiver configurado
         if: ${{ env.HAS_SIGNING_CERT != 'true' }}
         shell: powershell
         run: |
-          throw 'Publicação interrompida: configure WINDOWS_CERTIFICATE_BASE64 e WINDOWS_CERTIFICATE_PASSWORD. Não publique um Imago.exe sem assinatura, pois o Controle inteligente de aplicativos do Windows pode bloqueá-lo.'
+          Write-Warning 'Certificado Authenticode ausente. Será gerado apenas um artefato de teste; a Release pública não será atualizada.'
 
       - name: Assinar Imago.exe (quando o certificado estiver configurado)
         if: ${{ env.HAS_SIGNING_CERT == 'true' }}
@@ -84,26 +84,36 @@ jobs:
           "$hash  Imago.exe" | Out-File dist/win/Imago.exe.sha256 -Encoding ascii
 
       - name: Compactar a pasta do PC
-        run: Compress-Archive -Path dist/win/* -DestinationPath Imago-PC-Windows.zip
+        shell: powershell
+        run: |
+          $name = if ($env:HAS_SIGNING_CERT -eq 'true') { 'Imago-PC-Windows.zip' } else { 'Imago-PC-Windows-unsigned-test.zip' }
+          Compress-Archive -Path dist/win/* -DestinationPath $name
 
       - name: Gerar checksum do ZIP
         shell: powershell
         run: |
-          $hash = (Get-FileHash Imago-PC-Windows.zip -Algorithm SHA256).Hash.ToLower()
-          "$hash  Imago-PC-Windows.zip" | Out-File Imago-PC-Windows.zip.sha256 -Encoding ascii
+          $zip = Get-ChildItem Imago-PC-Windows*.zip | Select-Object -First 1
+          $hash = (Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower()
+          "$hash  $($zip.Name)" | Out-File "$($zip.Name).sha256" -Encoding ascii
 
       - uses: actions/upload-artifact@v4
         with:
           name: Imago-PC-Windows
           path: |
-            Imago-PC-Windows.zip
-            Imago-PC-Windows.zip.sha256
+            Imago-PC-Windows*.zip
+            Imago-PC-Windows*.zip.sha256
 
       # Link fixo: https://github.com/<usuario>/<repo>/releases/download/pc-latest/Imago-PC-Windows.zip
       - name: Publicar na Release pc-latest
+        if: ${{ env.HAS_SIGNING_CERT == 'true' }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete pc-latest --cleanup-tag -y || true
-          gh release create pc-latest Imago-PC-Windows.zip Imago-PC-Windows.zip.sha256 --title "Imago para Windows (PC)" --notes "Programa do PC gerado automaticamente. Extraia o ZIP, verifique o SHA-256 e abra o Imago.exe."
+          gh release create pc-latest Imago-PC-Windows.zip Imago-PC-Windows.zip.sha256 --title "Imago para Windows (PC)" --notes "Programa do PC assinado Authenticode. Extraia o ZIP, verifique o SHA-256 e abra o Imago.exe."
+
+      - name: Informar que a Release pública foi bloqueada sem assinatura
+        if: ${{ env.HAS_SIGNING_CERT != 'true' }}
+        shell: bash
+        run: echo 'Artefato de teste gerado. Configure WINDOWS_CERTIFICATE_BASE64 e WINDOWS_CERTIFICATE_PASSWORD para publicar o Imago.exe assinado em pc-latest.'
