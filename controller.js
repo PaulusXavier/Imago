@@ -115,7 +115,7 @@ let relayConfigWarningShown = false;
 
 // ---------- Codigo de seguranca da sessao ----------
 // Sem isso, qualquer aparelho na mesma rede Wi-Fi conseguiria se conectar
-// direto no servidor local (ou adivinhar o codigo de 4 digitos do relay) e
+// direto no servidor local (ou adivinhar o codigo de 6 digitos do relay) e
 // controlar a apresentacao sem nunca ter escaneado o QR code. Este codigo e
 // gerado do zero toda vez que o Imago abre, vai embutido no QR/link (campo
 // "token") e tambem e exigido como primeira mensagem de qualquer conexao
@@ -124,9 +124,9 @@ let relayConfigWarningShown = false;
 // mao se o QR nao puder ser escaneado.
 const TOKEN_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 function generateSessionToken(length = 10) {
-  const bytes = crypto.randomBytes(length);
+  // randomInt sorteia de forma uniforme (bytes % 31 favorecia levemente os primeiros caracteres).
   let out = '';
-  for (let i = 0; i < length; i++) out += TOKEN_ALPHABET[bytes[i] % TOKEN_ALPHABET.length];
+  for (let i = 0; i < length; i++) out += TOKEN_ALPHABET[crypto.randomInt(TOKEN_ALPHABET.length)];
   return out;
 }
 const SESSION_TOKEN = generateSessionToken();
@@ -244,10 +244,6 @@ function broadcastSlideInfo() {
   });
 }
 
-function getLocalIp() {
-  return network.bestLocalIp();
-}
-
 // ---------- Historico de sessoes ----------
 let activeSession = null;
 
@@ -271,12 +267,8 @@ function sendHistoryTo(ws) {
   safeSend(ws, JSON.stringify({ type: 'history', sessions: history.getRecent(10) }));
 }
 
-// Encerra e salva a sessao em andamento se o script for fechado no meio de
-// uma apresentacao (Ctrl+C no terminal), pra nao perder o registro.
-process.on('SIGINT', () => {
-  endSessionHistory();
-  process.exit(0);
-});
+// (O historico da sessao em andamento e salvo no evento 'exit', la no final do
+// arquivo, cobrindo Ctrl+C, fechar a janela e encerramento pelo sistema.)
 
 // ---------- Miniaturas dos slides ----------
 const thumbsCache = new Map(); // index (1-based) -> data URL
@@ -423,11 +415,14 @@ function executeCommand(cmd, msg) {
       } else {
         if (msg?.fromCurrent) robot.keyTap('f5', ['shift']); else robot.keyTap('f5');
         if (slidesData.length) {
-          currentSlide = 1;
+          if (!msg?.fromCurrent) currentSlide = 1;
           broadcastSlideInfo();
         }
       }
       beginSessionHistory();
+      if (!viaOffice && activeSession && currentSlide > 0) {
+        activeSession.maxSlideReached = Math.max(activeSession.maxSlideReached, currentSlide);
+      }
       break;
     case 'end':
       if (viaOffice) office.send({ cmd: 'ppt.end' });
@@ -828,22 +823,21 @@ if (!office.isSupported()) startThumbnailGeneration();
 updater.checkForUpdate({ manifestUrl: UPDATE_MANIFEST_URL, currentVersion: CURRENT_VERSION });
 if (!RELAY_NOT_CONFIGURED) console.log('Conectando ao relay (modo dados moveis)... a rede local abre em seguida.');
 
-// ---------- Encerramento: aplica atualizacao pendente (se houver) ----------
-// Cobre tanto fechar a janela do terminal (SIGINT/Ctrl+C, tratado como
-// "encerrar" -- ver history em modules.js) quanto process.exit chamado por outro
-// caminho. So dispara o processo de atualizacao, nao trava o fechamento.
+// ---------- Encerramento: salva o historico e aplica atualizacao pendente ----------
+// Tudo passa pelo evento 'exit', que roda em QUALQUER saida (process.exit, Ctrl+C,
+// fechar a janela, encerramento pelo sistema). Antes, so SIGINT salvava o historico
+// da apresentacao em andamento: SIGTERM/SIGHUP (fechar a janela) perdiam o registro.
+// Aqui so se dispara o processo de atualizacao, sem travar o fechamento.
 let updateHandled = false;
 function handleExit() {
   if (updateHandled) return;
   updateHandled = true;
   updater.launchApplyIfReady();
 }
-process.on('exit', handleExit);
-process.on('SIGINT', () => {
+process.on('exit', () => {
+  endSessionHistory();
   handleExit();
-  process.exit(0);
 });
-process.on('SIGTERM', () => {
-  handleExit();
-  process.exit(0);
-});
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+  process.on(signal, () => process.exit(0));
+}
