@@ -1,6 +1,6 @@
 {
-  "version": "2.7.1",
-  "notes": "Publicação Windows exige assinatura Authenticode; chaves privadas removidas do repositório; APK assinado por secrets.",
+  "version": "2.7.2",
+  "notes": "Workflows sem secrets geram apenas artefatos de teste; Releases públicas exigem assinatura e chaves privadas ficam fora do repositório.",
   "downloads": {
     "win": {
       "url": "",
