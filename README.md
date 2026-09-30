@@ -246,11 +246,11 @@ Depois que a configuração única acima foi feita por alguém, usar o Imago fic
 
 #### No PC (toda vez que for apresentar)
 
-1. Extraia o zip do Imago (se ainda não tiver feito) em qualquer pasta.
+1. Extraia o ZIP inteiro do Imago — não abra o executável de dentro do ZIP — de preferência em Área de Trabalho ou Documentos.
 
-1. Dê duplo clique no **Imago** (`Imago.exe` no Windows). Um QR code aparece na tela.
+1. Dê duplo clique no **Imago** (`Imago.exe` no Windows) ou em **Iniciar Imago.bat**. Uma janela preta com o QR code aparece; deixe-a aberta.
 
-1. *(Opcional, só na primeira vez com aquela apresentação)* Para ativar notas do apresentador e miniaturas dos slides: arraste o arquivo `.pptx` para cima do ícone do Imago, ou dê duplo clique no atalho **Configurar** e escolha o arquivo na lista. Sem isso, a navegação de slides já funciona normalmente.
+1. *(Opcional, só na primeira vez com aquela apresentação)* Para ativar notas do apresentador e miniaturas dos slides: arraste o arquivo `.pptx` para cima do ícone do Imago, ou dê duplo clique em **Configurar.bat** e escolha o arquivo na lista. Sem isso, a navegação de slides já funciona normalmente.
 
 #### Conectando os dois
 
