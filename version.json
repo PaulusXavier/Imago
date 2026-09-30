@@ -1,6 +1,6 @@
 {
-  "version": "2.7.0",
-  "notes": "Wi-Fi local pelo navegador (o PC serve o app), notas/titulos na ordem certa, reconexao Bluetooth automatica, correcoes de estabilidade.",
+  "version": "2.7.1",
+  "notes": "Publicação Windows exige assinatura Authenticode; chaves privadas removidas do repositório; APK assinado por secrets.",
   "downloads": {
     "win": {
       "url": "",
