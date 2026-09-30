@@ -16,6 +16,11 @@ jobs:
   pc:
     runs-on: windows-latest
     timeout-minutes: 30
+    env:
+      # O contexto "secrets" NAO pode ser usado em "if:" de um step (o GitHub
+      # rejeita o workflow inteiro). Por isso o resultado vai para uma variavel
+      # de ambiente do job, que o "if:" do passo de assinatura consulta.
+      HAS_SIGNING_CERT: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -28,6 +33,10 @@ jobs:
       # teclado/mouse, então não há arquivo nativo sem assinatura para o Windows bloquear.
       - name: Instalar dependências
         run: npm ci --ignore-scripts --no-audit --no-fund
+
+      # Falha cedo se a lógica de segurança/atualização quebrar (como no apk.yml).
+      - name: Rodar os testes
+        run: npm test
 
       - name: Auditar dependências de produção
         run: npm audit --omit=dev --audit-level=high
@@ -45,7 +54,7 @@ jobs:
           if (-not (Test-Path 'dist/win/node_modules/robotjs')) { throw 'Pasta robotjs ausente' }
 
       - name: Assinar Imago.exe (quando o certificado estiver configurado)
-        if: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != '' }}
+        if: ${{ env.HAS_SIGNING_CERT == 'true' }}
         shell: powershell
         env:
           WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
