@@ -45,6 +45,21 @@ jobs:
       - name: Sincronizar o app web com o Android
         run: npm run sync
 
+      # Confere se cada build.gradle/AndroidManifest esta na pasta certa. Ha DOIS
+      # build.gradle (android/ e android/app/) e DOIS AndroidManifest.xml: trocar um
+      # pelo outro ao enviar os arquivos gera o erro confuso "Plugin with id
+      # 'com.android.application' not found". Aqui ele vira uma mensagem clara.
+      - name: Conferir a estrutura do projeto Android
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+          grep -q "com.android.tools.build:gradle" android/build.gradle \
+            || fail "android/build.gradle esta errado: deveria ter o buildscript com o plugin do Android (parece ter sido trocado pelo android/app/build.gradle)."
+          grep -q "com.android.application" android/app/build.gradle \
+            || fail "android/app/build.gradle esta errado: deveria comecar com apply plugin 'com.android.application' (parece ter sido trocado pelo android/build.gradle)."
+          grep -q "android.permission.INTERNET" android/app/src/main/AndroidManifest.xml \
+            || fail "android/app/src/main/AndroidManifest.xml esta errado ou ausente."
+          if [ -f apk.yml ]; then echo "::warning::Existe um apk.yml solto na raiz do repositorio; apague-o (o certo fica em .github/workflows/)."; fi
+
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Compilar o APK
