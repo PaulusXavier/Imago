@@ -11,6 +11,16 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="Imago" />
   <meta name="theme-color" content="#1b1140" />
+  <script>
+    // O Chrome dispara "beforeinstallprompt" uma unica vez; guardamos aqui, antes do
+    // app.js carregar, para o botao "Instalar a versao web" nunca perder o evento.
+    window.__imagoInstallEvent = null;
+    window.addEventListener('beforeinstallprompt', function (e) {
+      e.preventDefault();
+      window.__imagoInstallEvent = e;
+      window.dispatchEvent(new Event('imago-installable'));
+    });
+  </script>
   <style>
 :root {
   --bg: #1b1140;
