@@ -35,6 +35,8 @@ Abra o site no celular e escolha **Instalar a versão web**. No Chrome/Android, 
 
 Para Bluetooth, **não instale nada no PC**. Para notas, miniaturas, laser e Office, baixe o **Imago para Windows** exibido na tela de conexão e abra o `Imago.exe`.
 
+> **Importante sobre o Windows:** o `Imago.exe` só deve ser publicado depois de assinado com um certificado Authenticode confiável. O workflow agora interrompe a publicação se os secrets `WINDOWS_CERTIFICATE_BASE64` e `WINDOWS_CERTIFICATE_PASSWORD` não estiverem configurados. Isso evita distribuir um executável que o Controle inteligente de aplicativos possa bloquear. O certificado `.pfx` nunca deve ser colocado no ZIP ou no repositório.
+
 ### Bluetooth pelo app web/PWA
 
 Também é possível usar o Bluetooth sem o APK Android: instale o Imago no **Chrome para Android** pelo botão **Instalar o Imago** e, com o `Imago.exe` aberto no PC, toque em **Conectar Bluetooth web**.
@@ -65,6 +67,18 @@ O Imago lembra a última opção escolhida. Para dados móveis, o PC precisa est
 
 A cada novo commit o APK é regerado no mesmo link.
 
+### Configurar assinaturas privadas no GitHub
+
+Em **Settings → Secrets and variables → Actions**, configure:
+
+- `WINDOWS_CERTIFICATE_BASE64`: conteúdo Base64 do certificado `.pfx` de assinatura de código.
+
+- `WINDOWS_CERTIFICATE_PASSWORD`: senha do `.pfx`.
+
+- `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` e `ANDROID_KEY_PASSWORD`: usados somente para assinar o APK Android.
+
+O repositório não deve conter `android/app/imago.keystore`, `.pfx`, `.pem` ou chaves privadas. A ausência desses secrets faz o workflow falhar de propósito, em vez de publicar artefatos não confiáveis.
+
 ## Usar por Bluetooth depois da instalação
 
 1. Ligue o Bluetooth do celular e do PC.
@@ -79,45 +93,72 @@ Teclas enviadas: → ← (slides), Home/End, F5, Esc, B, W, Ctrl+L (laser) e nú
 
 ## Novidades da versão 2.7
 
-- **Wi-Fi funciona pelo navegador:** o `Imago.exe` agora serve a tela do celular pela própria rede local (`http://IP-do-PC:8765`). O QR code aponta para ele, então abre na hora, funciona **sem internet** e sem o bloqueio de "conteúdo misto" que impedia uma página HTTPS (GitHub Pages) de abrir `ws://` no Chrome/Safari (iPhone incluído). O link do site publicado continua impresso, para uso por dados móveis.
+- **Wi-Fi funciona pelo navegador:** o `Imago.exe` agora serve a tela do celular pela própria rede local (`http://IP-do-PC:8765` ). O QR code aponta para ele, então abre na hora, funciona **sem internet** e sem o bloqueio de "conteúdo misto" que impedia uma página HTTPS (GitHub Pages) de abrir `ws://` no Chrome/Safari (iPhone incluído). O link do site publicado continua impresso, para uso por dados móveis.
+
 - **Abrir pelo QR já conecta** (sem tocar em Conectar) e o código de segurança some da barra de endereços.
+
 - **Notas e títulos corretos:** o `.pptx` é lido na ordem real dos slides (antes, slides reordenados no PowerPoint apareciam trocados), o título vem do marcador de título e a primeira linha das notas não se perde mais.
+
 - **Bluetooth:** a reconexão automática ao abrir o app agora entra sozinha no controle; arrastes lentos do laser não são mais "engolidos".
+
 - **Estabilidade do PC:** uma mensagem malformada ou gigante vinda da rede não derruba mais o Imago (era possível sem autenticar); vários celulares recebem os slides ao mesmo tempo.
+
 - **IP certo no QR:** adaptadores virtuais (Hyper-V/WSL, VirtualBox, VPN) deixam de ser escolhidos; os demais endereços aparecem no terminal.
+
 - **Atualização automática do PC:** o processo que troca os arquivos agora roda de uma cópia temporária (o `.exe` em uso não podia ser sobrescrito no Windows).
+
 - **GitHub Actions:** o `pc.yml` tinha `secrets` dentro de `if:` (o GitHub rejeita o workflow inteiro); corrigido. Os dois workflows rodam `npm test`, e o `apk.yml` solto na raiz foi removido (a versão certa fica em `.github/workflows/`).
+
 - Assistente de configuração encontra `.pptx` em pastas dentro do OneDrive; `versionName` do APK vem do `package.json`; backup automático do Android desligado (o app guarda o código de segurança).
 
 ### Segunda revisão (segurança e detalhes)
 
 - **Relay — limite de conexões não pode mais ser burlado:** o relay usava o *primeiro* IP do `X-Forwarded-For`, que quem se conecta escreve sozinho; bastava mudar esse cabeçalho a cada tentativa para escapar do limite e testar códigos de 6 dígitos em massa. Agora o IP é contado a partir do **fim** da lista (o que o proxy confiável acrescentou). Se o seu relay tiver mais de um proxy na frente, defina `TRUST_PROXY_HOPS` (padrão `1`; `0` = sem proxy, ignora o cabeçalho). O teste do relay agora cobre esse ataque.
+
 - **Notas pessoais por apresentação:** as notas que você escreve no celular eram guardadas só pelo número do slide, então o "slide 3" de uma apresentação mostrava as notas do "slide 3" de outra. Agora cada apresentação tem as suas (o PC passa o nome do arquivo em `slide-info`). As notas antigas passam, uma única vez, para a primeira apresentação aberta depois da atualização. Com um PC ainda na versão anterior, tudo funciona como antes.
+
 - **QR/link de outro PC:** ao escanear ou colar o link, IP, porta, código do relay e código de segurança do PC anterior são limpos, para não se misturarem com os do novo.
+
 - **Câmera:** o pedido de permissão do Android não cancela mais a leitura na primeira vez; *Esc*/voltar fecham a câmera em qualquer etapa.
+
 - **Miniaturas:** o app só aceita miniatura no formato de imagem embutida (`data:image/png|jpeg;base64`).
+
 - **Ponte do Office:** o pedido de miniaturas do celular agora tem limite (uma lista enorme travava a ponte).
 
 ### Leitura do QR code dentro do app
 
 - Novo botão **📷 Escanear QR code do PC** na tela de conexão: abre a câmera, lê o QR do Imago e já conecta (preenche IP, porta e código de segurança sozinho). Se o QR não for do Imago, o app avisa e continua procurando.
-- Funciona no **app Android (APK)** e no **site publicado (HTTPS)**. Na página servida pelo próprio PC (`http://IP:8765`) o navegador não libera a câmera; ali o botão fica escondido, mas essa página já foi aberta justamente por um QR.
+
+- Funciona no **app Android (APK)** e no **site publicado (HTTPS)**. Na página servida pelo próprio PC (`http://IP:8765` ) o navegador não libera a câmera; ali o botão fica escondido, mas essa página já foi aberta justamente por um QR.
+
 - O decodificador é o [jsQR](https://github.com/cozmo/jsQR) (Apache-2.0, arquivo `jsqr.min.js` + `LICENSE-jsqr.txt`), local, sem enviar imagem a lugar nenhum; só é carregado na primeira leitura e fica no cache do app.
+
 - O APK passa a pedir a permissão de **Câmera** (`CAMERA`), usada só para ler o QR.
 
 ### Correções da revisão de código (sobre a 2.7)
 
 - **Web Bluetooth:** títulos e notas com acento (ã, é, ç…) chegavam corrompidos (`��`) quando o texto era dividido em pacotes de 20 bytes; agora o texto é remontado corretamente. Se a autenticação falha, a conexão Bluetooth também é encerrada (antes ficava aberta no PC).
+
 - **App abre mesmo com o armazenamento do navegador bloqueado** (modo privado / cookies bloqueados): antes uma exceção no `localStorage` derrubava a tela inteira.
+
 - **Reconexão:** tocar em *Desconectar* durante uma tentativa de reconexão não deixa mais uma conexão "fantasma" ativa no PC. O aviso de reconexão volta ao texto normal depois de usar o Bluetooth.
+
 - **Laser:** desconectar com a aba *Laser* aberta desliga o laser (antes ficava preso no PowerPoint).
+
 - **Touchpad:** os movimentos são somados e enviados ~60 vezes por segundo também por Wi-Fi, internet e Web Bluetooth (o cursor deixa de atrasar pelo relay).
+
 - **Cronômetro pausado** não é mais sobrescrito pelo tempo do PowerPoint; atalhos com Ctrl/Alt (ex.: Alt+← do navegador) não trocam mais de slide; a prévia do próximo slide também aparece fora do modo Office.
+
 - **PC:** o histórico da apresentação em andamento é salvo em qualquer forma de encerramento (SIGTERM/SIGHUP/fechar a janela; antes só no Ctrl+C); *Iniciar deste slide* não zera mais o contador; o código de segurança é sorteado de forma uniforme.
+
 - **Miniaturas (macOS/Linux):** o LibreOffice roda com perfil próprio (não conflita com um LibreOffice já aberto), tem limite de tempo (3 min) e o aviso final não é mais duplicado.
+
 - **Atualização automática:** um download cortado no meio agora falha com mensagem em vez de travar; o `chmod` só mexe no executável `Imago`.
+
 - **Relay:** o celular não consegue mais se passar pelo próprio relay (mensagens como `phone-disconnected`/`session-created` enviadas por ele são descartadas).
+
 - **Android:** campos compartilhados entre threads do `ImagoHidPlugin` agora são `volatile`.
+
 - **Testes:** `logic_test.js` passou a testar o código real do atualizador (antes testava cópias); novos testes de integração do relay e do controller. Comentários desatualizados (`updater.js`, `office.js`, "4 dígitos") corrigidos.
 
 ## Novidades da versão 2.x
@@ -130,7 +171,7 @@ Teclas enviadas: → ← (slides), Home/End, F5, Esc, B, W, Ctrl+L (laser) e nú
 
 - **Ícone próprio** do Imago no celular.
 
-- **Atualiza por cima:** o APK agora usa uma chave fixa (`android/app/imago.keystore`), então instalar um APK novo atualiza o app sem desinstalar. Se você já instalou o APK anterior, desinstale-o uma única vez.
+- **Atualiza por cima:** os APKs publicados usam a chave privada armazenada nos secrets do GitHub, nunca uma chave dentro do repositório. Se os secrets forem trocados, o Android exigirá desinstalar a versão anterior antes de instalar a nova.
 
 - Ao tocar em *Desconectar*, o app não volta sozinho para o controle quando o Windows reconecta.
 
@@ -206,8 +247,10 @@ Se você é quem vai *usar* o Imago (não configurá-lo pela primeira vez), pule
 1. Use este mesmo repositório (o relay é o arquivo `relay-server.js`).
 
 1. No [Render](https://render.com), crie um **Web Service** novo apontando para esse repositório/pasta.
-  - Build command: `npm install --ignore-scripts`
-  - Start command: `npm run relay`
+
+- Build command: `npm install --ignore-scripts`
+
+- Start command: `npm run relay`
 
 1. Copie a URL gerada (algo como `https://seu-relay.onrender.com` ) e troque `https://` por `wss://`.
 
@@ -224,11 +267,14 @@ A partir daqui, a URL do GitHub Pages é **fixa para sempre** (ex: `https://voce
 1. Instale o [Node.js](https://nodejs.org) (20 LTS) **só nesta etapa**, na sua própria máquina (quem vai apresentar depois não precisa disso).
 
 1. Na raiz do projeto, rode `npm install`.
-  - Obs: `robotjs` compila um módulo nativo. Se der erro, instale as "build tools" do seu sistema (Windows: Visual Studio Build Tools com "Desenvolvimento para Desktop com C++"; use Node.js 20 LTS; macOS: Xcode Command Line Tools; Linux: `build-essential`).
+
+- Obs: `robotjs` compila um módulo nativo. Se der erro, instale as "build tools" do seu sistema (Windows: Visual Studio Build Tools com "Desenvolvimento para Desktop com C++"; use Node.js 20 LTS; macOS: Xcode Command Line Tools; Linux: `build-essential`).
 
 1. Configure a URL do relay e do app publicado, por variável de ambiente na hora de gerar o instalável (não precisa mais editar o arquivo):
-  - Windows (PowerShell): `$env:RELAY_URL="wss://seu-relay.onrender.com"; $env:WEB_APP_URL="https://voce.github.io/imago"`
-  - macOS/Linux: `export RELAY_URL=wss://seu-relay.onrender.com WEB_APP_URL=https://voce.github.io/imago`
+
+- Windows (PowerShell): `$env:RELAY_URL="wss://seu-relay.onrender.com"; $env:WEB_APP_URL="https://voce.github.io/imago"`
+
+- macOS/Linux: `export RELAY_URL=wss://seu-relay.onrender.com WEB_APP_URL=https://voce.github.io/imago`
 
 1. Gere o executável (escolha o(s ) sistema(s) que vai distribuir):
 
@@ -253,9 +299,12 @@ Pra ativar isso:
 1. `version.json` (já incluído neste repositório) é o manifesto — por padrão o Imago procura ele do lado da PWA publicada (mesmo GitHub Pages do passo 2), então normalmente não precisa configurar nada além de mantê-lo atualizado. Se preferir hospedar em outro lugar, aponte pra ele com a variável de ambiente `UPDATE_MANIFEST_URL` na hora de gerar o instalável (passo 3).
 
 1. Sempre que quiser publicar uma versão nova:
-  - Suba o número de `"version"` em `package.json` (ex: `1.1.0` → `1.2.0`).
-  - Rode `npm run build:win` / `build:mac` / `build:linux` normalmente e zipe cada pasta `dist/<sistema>/` (o mesmo zip de sempre, que já contém o `.exe`/executável + arquivos nativos).
-  - Suba esses zips pra algum lugar com link direto de download por **HTTPS** — o jeito mais simples é uma [Release do GitHub](https://docs.github.com/repositories/releasing-projects-on-github/managing-releases-in-a-repository) no mesmo repositório (arrasta os zips ao criar a release; o link de cada arquivo fica em algo como `https://github.com/voce/imago/releases/download/v1.2.0/imago-win.zip` ).
+
+- Suba o número de `"version"` em `package.json` (ex: `1.1.0` → `1.2.0`).
+
+- Rode `npm run build:win` / `build:mac` / `build:linux` normalmente e zipe cada pasta `dist/<sistema>/` (o mesmo zip de sempre, que já contém o `.exe`/executável + arquivos nativos).
+
+- Suba esses zips pra algum lugar com link direto de download por **HTTPS** — o jeito mais simples é uma [Release do GitHub](https://docs.github.com/repositories/releasing-projects-on-github/managing-releases-in-a-repository) no mesmo repositório (arrasta os zips ao criar a release; o link de cada arquivo fica em algo como `https://github.com/voce/imago/releases/download/v1.2.0/imago-win.zip` ).
     - Calcule o **SHA-256** de cada zip (o Imago recusa qualquer atualização cujo checksum não bater, então esse passo não é opcional):
       - Windows (PowerShell): `Get-FileHash imago-win.zip -Algorithm SHA256`
       - macOS: `shasum -a 256 imago-mac.zip`
