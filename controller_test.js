@@ -93,7 +93,7 @@ function connect(port) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'imago-ctrl-test-'));
   const files = [
     'controller.js', 'modules.js', 'web-ble-bridge.js', 'package.json', 'office-bridge.ps1', 'input-bridge.ps1',
-    'index.html', 'app.js', 'capacitor.js', 'manifest.json', 'version.json', 'icon.svg',
+    'index.html', 'app.js', 'capacitor.js', 'jsqr.min.js', 'manifest.json', 'version.json', 'icon.svg',
     'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png',
   ];
   for (const f of files) fs.copyFileSync(path.join(__dirname, f), path.join(tmp, f));
@@ -157,6 +157,13 @@ Module._load = function (request, ...rest) {
     for (const bad of ['/package.json', '/../package.json', '/config.json', '/controller.js', '/%2e%2e/package.json']) {
       assert.strictEqual((await httpGet(port, bad)).status, 404, `deveria negar ${bad}`);
     }
+  });
+
+  await test('servidor local entrega o leitor de QR (jsqr.min.js) usado pela câmera do app', async () => {
+    const r = await httpGet(port, '/jsqr.min.js');
+    assert.strictEqual(r.status, 200);
+    assert.match(String(r.headers['content-type']), /javascript/);
+    assert.ok(r.body.length > 50000, 'jsqr.min.js parece incompleto');
   });
 
   await test('código de segurança errado é recusado (4003) e nada é executado', async () => {
