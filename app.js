@@ -294,6 +294,37 @@ function sendCommand(command, extra) {
   send({ type: 'command', command, ...extra });
 }
 
+// ---------- Notas pessoais (do apresentador, guardadas no celular) ----------
+// Antes a chave era so o numero do slide: as notas do "slide 3" de uma apresentacao
+// apareciam no "slide 3" de qualquer outra. Agora a chave inclui o nome da apresentacao
+// (o PC informa em slide-info.name). PCs antigos nao mandam o nome: ficam na chave antiga.
+let currentDeckKey = '';
+function deckKeyFrom(name) {
+  return String(name || '').trim().toLowerCase().replace(/\.(pptx?|ppsx?)$/i, '').slice(0, 80);
+}
+function notesKey(index) {
+  return currentDeckKey ? `imago-notes-d:${encodeURIComponent(currentDeckKey)}:${index}` : `imago-notes-${index}`;
+}
+// Notas escritas antes desta versao (chave so com o numero) passam para a primeira
+// apresentacao aberta depois da atualizacao, em vez de sumirem.
+function migrateLegacyNotes() {
+  if (!currentDeckKey || storageGet('imago-notes-migrated') === '1') return;
+  try {
+    const legacy = [];
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const k = window.localStorage.key(i);
+      if (/^imago-notes-\d+$/.test(k)) legacy.push(k);
+    }
+    for (const k of legacy) {
+      const value = window.localStorage.getItem(k);
+      const target = `imago-notes-d:${encodeURIComponent(currentDeckKey)}:${k.slice('imago-notes-'.length)}`;
+      if (value && window.localStorage.getItem(target) === null) window.localStorage.setItem(target, value);
+      window.localStorage.removeItem(k);
+    }
+  } catch { /* armazenamento indisponivel: tenta de novo na proxima vez */ return; }
+  storageSet('imago-notes-migrated', '1');
+}
+
 // ---------- Conexão ----------
 function updateSlideInfo(msg) {
   els.slideInfo.classList.remove('hidden');
@@ -303,7 +334,9 @@ function updateSlideInfo(msg) {
   currentSlideIndex = msg.index;
   currentSlideTotal = msg.total;
   document.getElementById('slide-progress-bar').style.width = msg.total ? (msg.index / msg.total) * 100 + '%' : '0';
-  try { els.notes.value = storageGet('imago-notes-' + msg.index) || ''; } catch { /* ignora */ }
+  currentDeckKey = deckKeyFrom(msg.name);
+  migrateLegacyNotes();
+  try { els.notes.value = storageGet(notesKey(msg.index)) || ''; } catch { /* ignora */ }
   highlightActiveThumb();
   updateNextPreview();
 }
@@ -346,6 +379,8 @@ function buildThumbsSkeleton(total) {
 function setThumbImage(index, dataUrl) {
   const item = thumbItems.get(index);
   if (!item) return;
+  // So imagem embutida (data:image/png|jpeg;base64): nada de apontar o <img> para outro endereco.
+  if (typeof dataUrl !== 'string' || !/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(dataUrl)) return;
   item.img.src = dataUrl;
   item.img.hidden = false;
   item.wrapper.classList.remove('skeleton');
@@ -1465,7 +1500,7 @@ if (isApk) {
 // ---------- Melhorias v2.1 ----------
 // Notas pessoais por slide (salvas no celular)
 els.notes.addEventListener('input', () => {
-  try { storageSet('imago-notes-' + (currentSlideIndex || 0), els.notes.value); } catch { /* sem espaço */ }
+  try { storageSet(notesKey(currentSlideIndex || 0), els.notes.value); } catch { /* sem espaço */ }
 });
 // Tamanho da letra das notas do apresentador
 let notesSize = Number(storageGet('imago-notes-size')) || 14;
@@ -1603,10 +1638,13 @@ function parseImagoLink(text) {
 function applyConnectionLink(text) {
   const d = parseImagoLink(text);
   if (!d) return false;
-  if (d.ip) els.inputIp.value = d.ip;
-  if (d.port) els.inputPort.value = d.port;
-  if (d.code) els.inputCode.value = d.code;
-  if (d.token) { sessionToken = d.token; els.inputToken.value = sessionToken; }
+  // O link descreve UM PC por inteiro: campos que ele nao traz sao limpos, senao
+  // o codigo do relay / a porta de outro PC (salvos antes) ficariam misturados.
+  els.inputIp.value = d.ip;
+  els.inputPort.value = d.port;
+  els.inputCode.value = d.code;
+  sessionToken = d.token;
+  els.inputToken.value = d.token;
   showFormError('');
   return true;
 }
@@ -1665,7 +1703,7 @@ function qrCameraError(err) {
 }
 
 async function openQrScanner() {
-  if (qrStream || !els.controlScreen.classList.contains('hidden')) return;
+  if (!qrEls.overlay.classList.contains('hidden') || !els.controlScreen.classList.contains('hidden')) return;
   if (!navigator.mediaDevices?.getUserMedia || (!window.isSecureContext && !isApk)) {
     toast('A câmera só funciona pelo app Android ou pelo site em HTTPS. Aqui, cole o link ou digite o IP.');
     return;
@@ -1726,8 +1764,10 @@ async function openQrScanner() {
 
 qrEls.button.addEventListener('click', openQrScanner);
 qrEls.cancel.addEventListener('click', closeQrScanner);
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && qrStream) closeQrScanner(); });
-document.addEventListener('visibilitychange', () => { if (document.hidden && !qrEls.overlay.classList.contains('hidden')) closeQrScanner(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !qrEls.overlay.classList.contains('hidden')) closeQrScanner(); });
+// So fecha ao ir para segundo plano se a camera ja estiver aberta: o pedido de
+// permissao do Android pode pausar a pagina, e fechar nessa hora cancelava a leitura.
+document.addEventListener('visibilitychange', () => { if (document.hidden && qrStream) closeQrScanner(); });
 // Em http:// (pagina servida pelo proprio PC) o navegador nao libera a camera: esconde o botao.
 if (!isApk && (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia)) qrEls.button.classList.add('hidden');
 if (isApk) document.getElementById('net-divider').classList.remove('hidden');
