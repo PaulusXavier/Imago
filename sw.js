@@ -1,11 +1,6 @@
-// "remote-cache-v7": alem de mudar o SW/app.js/index.html, o numero da
-// versao do cache foi incrementado de proposito, pra forcar quem ja tinha
-// instalado o app a baixar os arquivos novos (inclui o botao de instalar).
-// Da proxima vez que o app mudar de verdade, o proprio "fetch" abaixo ja
-// atualiza o cache sozinho quando online -- so precisa bumpar esse numero
-// se quiser forcar uma atualizacao imediata pra quem esta offline ha muito
-// tempo com uma versao bem antiga em cache.
-const CACHE_NAME = 'imago-cache-v14';
+// Aumente o numero de CACHE_NAME para forcar quem esta offline ha muito tempo a
+// baixar os arquivos novos. Com internet o "fetch" abaixo ja atualiza o cache sozinho.
+const CACHE_NAME = 'imago-cache-v15';
 const ASSETS = ['./', './index.html', './app.js', './sw.js', './capacitor.js', './manifest.json', './version.json', './icon.svg', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', (event) => {
