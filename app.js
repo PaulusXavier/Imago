@@ -179,6 +179,8 @@ function loadLastConnection() {
 function setStatus(connected, text) {
   els.statusDot.classList.toggle('connected', connected);
   els.statusText.textContent = text;
+  const transportChip = document.getElementById('transport-chip');
+  if (transportChip) transportChip.textContent = text;
   document.getElementById('status-bar')?.setAttribute('aria-label', `Status: ${text}`);
 }
 
@@ -1429,10 +1431,10 @@ if (RELAY_NOT_CONFIGURED) els.inputCode.closest('.field')?.classList.add('hidden
   }
   const apk = mk('a', android ? '⬇ Baixar app Android (APK)' : 'Baixar APK Android', 'install-link');
   apk.href = `https://github.com/${user}/${repo}/releases/download/apk-latest/Imago.apk`;
-  const webBtn = mk('button', 'Instalar a versão web (sem Bluetooth)', 'link-btn');
+  const webBtn = mk('button', 'Instalar a versão web', 'link-btn');
   webBtn.id = 'btn-install';
   if (ios) {
-    body.append(mk('p', 'No iPhone/iPad use a versão web (sem Bluetooth):\n1. Toque em Compartilhar (quadrado com seta) no Safari.\n2. Escolha "Adicionar à Tela de Início".'));
+    body.append(mk('p', 'No Chrome/Android, a versão web pode usar Bluetooth experimental. No iPhone/iPad, use Wi-Fi/internet: no Safari, toque em Compartilhar e escolha "Adicionar à Tela de Início".'));
   } else {
     body.append(mk('p', android
       ? 'Recomendado: o app Android usa Bluetooth e não precisa instalar nada no PC.'
