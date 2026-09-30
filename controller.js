@@ -510,7 +510,10 @@ function createWindowsInputShim(cause) {
     const osX = require('os');
     const cp = require('child_process');
     const script = path.join(osX.tmpdir(), 'imago-input-bridge.ps1');
-    fsX.writeFileSync(script, fsX.readFileSync(path.join(__dirname, 'input-bridge.ps1')));
+    const externalScript = path.join(path.dirname(process.execPath), 'input-bridge.ps1');
+    const bundledScript = path.join(__dirname, 'input-bridge.ps1');
+    const sourceScript = process.pkg && fsX.existsSync(externalScript) ? externalScript : bundledScript;
+    fsX.writeFileSync(script, fsX.readFileSync(sourceScript));
     const child = cp.spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script], {
       stdio: ['pipe', 'ignore', 'pipe'],
       windowsHide: true,
