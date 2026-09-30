@@ -186,6 +186,8 @@ const thumbnails = (() => {
   // Largura maxima da miniatura em pixels -- suficiente pra tela de celular,
   // mantendo o arquivo pequeno (rapido de mandar pelo Wi-Fi/relay).
   const THUMB_MAX_SIZE = Number(process.env.THUMB_MAX_SIZE) || 420;
+  // Sem limite, um LibreOffice travado deixava "Gerando miniaturas..." para sempre.
+  const SOFFICE_TIMEOUT_MS = Number(process.env.SOFFICE_TIMEOUT_MS) || 3 * 60 * 1000;
 
   function toolExists(cmd) {
     try {
@@ -246,7 +248,15 @@ const thumbnails = (() => {
    * onSlideReady(index, dataUrl) e chamado conforme cada miniatura fica pronta.
    * onDone(ok, reason) e chamado no final ('reason' so importa quando ok=false).
    */
-  function generateThumbnails(pptxPath, totalSlides, onSlideReady, onDone) {
+  function generateThumbnails(pptxPath, totalSlides, onSlideReady, onFinished) {
+    // Garante um unico aviso final: em caso de falha ao iniciar o processo, 'error' e
+    // 'close' disparam os dois, e o app recebia (e mostrava) o resultado duas vezes.
+    let finished = false;
+    const onDone = (ok, reason) => {
+      if (finished) return;
+      finished = true;
+      onFinished(ok, reason);
+    };
     const tools = checkTools();
     if (!tools.soffice || !tools.pdftoppm) {
       onDone(false, 'ferramentas-ausentes');
@@ -279,7 +289,11 @@ const thumbnails = (() => {
       return;
     }
 
+    // Perfil proprio do LibreOffice: se o usuario ja estiver com o LibreOffice aberto,
+    // o "--convert-to" usaria a instancia dele e podia nao converter nada (ou travar).
+    const profileUrl = require('url').pathToFileURL(path.join(os.tmpdir(), 'imago-lo-profile')).href;
     const soffice = spawn(SOFFICE_PATH, [
+      `-env:UserInstallation=${profileUrl}`,
       '--headless',
       '--norestore',
       '--convert-to',
@@ -289,8 +303,19 @@ const thumbnails = (() => {
       pptxPath,
     ]);
 
-    soffice.on('error', () => onDone(false, 'erro-soffice'));
+    const killTimer = setTimeout(() => {
+      try { soffice.kill(); } catch { /* ja encerrou */ }
+      onDone(false, 'erro-soffice');
+    }, SOFFICE_TIMEOUT_MS);
+    killTimer.unref?.();
+
+    soffice.on('error', () => {
+      clearTimeout(killTimer);
+      onDone(false, 'erro-soffice');
+    });
     soffice.on('close', (code) => {
+      clearTimeout(killTimer);
+      if (finished) return; // estourou o tempo limite: ja foi avisado
       const pdfPath = path.join(dir, `${path.basename(pptxPath, path.extname(pptxPath))}.pdf`);
       if (code !== 0 || !fs.existsSync(pdfPath)) {
         onDone(false, 'erro-soffice');
@@ -604,6 +629,7 @@ const office = (() => {
         } catch {
           return;
         }
+        if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') return;
         if (msg.type === 'ready') this.ready = true;
         this.emit(msg.type, msg);
       });
@@ -816,7 +842,17 @@ const updater = (() => {
         }
         hash.update(chunk);
       });
-      res.on('error', reject);
+      res.on('error', (err) => {
+        fileStream.destroy();
+        reject(err);
+      });
+      // Conexao cortada no meio: 'end'/'finish' nunca chegam e a promise ficava pendente.
+      res.on('close', () => {
+        if (!res.complete) {
+          fileStream.destroy();
+          reject(new Error('Download da atualização interrompido.'));
+        }
+      });
       fileStream.on('error', reject);
       fileStream.on('finish', resolve);
       res.pipe(fileStream);
@@ -1044,8 +1080,9 @@ const updater = (() => {
     // depois de copiado (o .zip às vezes não preserva isso).
     if (process.platform !== 'win32') {
       try {
-        const exeName = fs.readdirSync(appDir).find((f) => f === 'Imago' || f.startsWith('Imago'));
-        if (exeName) fs.chmodSync(path.join(appDir, exeName), 0o755);
+        // Antes pegava o primeiro item que COMECAVA com "Imago" (podia ser outra coisa).
+        const exePath = path.join(appDir, 'Imago');
+        if (fs.existsSync(exePath)) fs.chmodSync(exePath, 0o755);
       } catch {
         /* segue mesmo assim -- se falhar, o usuário so precisa reabrir manualmente */
       }
@@ -1065,7 +1102,17 @@ const updater = (() => {
     }
   }
 
-  return { checkForUpdate, launchApplyIfReady, applyPendingUpdate, compareVersions };
+  return {
+    checkForUpdate,
+    launchApplyIfReady,
+    applyPendingUpdate,
+    compareVersions,
+    // Expostos para os testes exercitarem o codigo real (e nao copias dele).
+    hashesMatch,
+    isValidManifest,
+    isValidPlatformEntry,
+    assertSafeZipEntries,
+  };
 })();
 
 // ==================== setup ====================
