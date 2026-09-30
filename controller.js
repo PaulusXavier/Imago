@@ -21,8 +21,18 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
-const { config: appConfig, setup, thumbnails, history, updater, office } = require('./modules');
+const { config: appConfig, setup, thumbnails, history, updater, office, pptx, network } = require('./modules');
+const http = require('http');
 const webBleBridge = require('./web-ble-bridge');
+
+// Uma excecao inesperada (mensagem estranha de um cliente, erro de um socket...)
+// nao pode derrubar o Imago no meio de uma apresentacao: registra e segue.
+process.on('uncaughtException', (err) => {
+  console.log('[Erro] Excecao nao tratada (o Imago continua rodando):', err && err.message ? err.message : err);
+});
+process.on('unhandledRejection', (err) => {
+  console.log('[Erro] Promessa rejeitada sem tratamento (o Imago continua rodando):', err && err.message ? err.message : err);
+});
 
 // "Imago.exe --configurar" abre o assistente de configuracao em vez de
 // iniciar o controle normalmente -- e o que o atalho "Configurar" (veja
@@ -82,7 +92,6 @@ try {
 
 const { WebSocketServer, WebSocket } = require('ws');
 const qrcode = require('qrcode-terminal');
-const AdmZip = require('adm-zip');
 
 // RELAY_URL e WEB_APP_URL sao preenchidos UMA VEZ por quem publicou o Imago
 // (veja README > "Configuracao unica"), antes de gerar o instalavel/.exe que
@@ -172,65 +181,13 @@ if (!PPTX_PATH) {
 }
 
 // ---------- Leitura do .pptx (titulo e notas de cada slide) ----------
-function slideNumberFromName(name) {
-  const m = name.match(/(\d+)\.xml$/);
-  return m ? parseInt(m[1], 10) : 0;
-}
-
-function decodeXmlEntities(text) {
-  return text
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'");
-}
-
-function extractTexts(xml) {
-  return [...xml.matchAll(/<a:t>(.*?)<\/a:t>/gs)].map((m) => decodeXmlEntities(m[1]));
-}
-
-function loadPptx(pptxPath) {
-  if (!pptxPath) return [];
-  try {
-    const zip = new AdmZip(pptxPath);
-    const entries = zip.getEntries();
-
-    const slideEntries = entries
-      .filter((e) => /^ppt\/slides\/slide\d+\.xml$/.test(e.entryName))
-      .sort((a, b) => slideNumberFromName(a.entryName) - slideNumberFromName(b.entryName));
-
-    const notesByIndex = new Map();
-    entries
-      .filter((e) => /^ppt\/notesSlides\/notesSlide\d+\.xml$/.test(e.entryName))
-      .forEach((e) => notesByIndex.set(slideNumberFromName(e.entryName), e));
-
-    return slideEntries.map((entry, i) => {
-      const texts = extractTexts(entry.getData().toString('utf8'));
-      const title = texts[0] || `Slide ${i + 1}`;
-
-      let notes = '';
-      const notesEntry = notesByIndex.get(i + 1);
-      if (notesEntry) {
-        // A primeira caixa de texto das notas costuma repetir o conteudo do
-        // slide; pega o restante, que sao as notas de fato do apresentador.
-        const notesTexts = extractTexts(notesEntry.getData().toString('utf8'));
-        notes = notesTexts.slice(1).join(' ').trim();
-      }
-
-      return { title, notes };
-    });
-  } catch (err) {
-    console.log('[Aviso] Nao foi possivel ler o .pptx para notas/titulos:', err.message);
-    return [];
-  }
-}
-
-const slidesData = loadPptx(PPTX_PATH);
+// A leitura fica em modules.js (pptx) para poder ser testada; respeita a ordem
+// real dos slides e as notas de cada um.
+const slidesData = pptx.load(PPTX_PATH);
 let currentSlide = slidesData.length ? 1 : 0;
 
 // ---------- Conexoes ativas (para poder mandar mensagens pra elas) ----------
-let currentLocalWs = null;
+let localWss = null; // servidor local (HTTP + WebSocket), criado mais abaixo
 let currentRelayWs = null;
 let webBle = { broadcast() {} };
 // Vira true so depois que o lado do relay manda o "hello" com o token
@@ -238,10 +195,19 @@ let webBle = { broadcast() {} };
 // (notas do apresentador, miniaturas) pro relay antes disso.
 let relayAuthorized = false;
 
+function safeSend(ws, json) {
+  try {
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(json);
+  } catch { /* conexao caindo: o 'close' cuida da limpeza */ }
+}
+
 function broadcast(payload) {
   const json = JSON.stringify(payload);
-  currentLocalWs?.send(json);
-  if (relayAuthorized) currentRelayWs?.send(json);
+  // Todos os celulares/tablets autenticados na rede local recebem (antes so o ultimo).
+  if (localWss) {
+    localWss.clients.forEach((client) => { if (client.authorized) safeSend(client, json); });
+  }
+  if (relayAuthorized) safeSend(currentRelayWs, json);
   webBle.broadcast(payload);
 }
 
@@ -279,21 +245,16 @@ function broadcastSlideInfo() {
 }
 
 function getLocalIp() {
-  const interfaces = os.networkInterfaces();
-  for (const name of Object.keys(interfaces)) {
-    for (const iface of interfaces[name]) {
-      if (iface.family === 'IPv4' && !iface.internal) {
-        return iface.address;
-      }
-    }
-  }
-  return '127.0.0.1';
+  return network.bestLocalIp();
 }
 
 // ---------- Historico de sessoes ----------
 let activeSession = null;
 
 function beginSessionHistory() {
+  // "Iniciar" duas vezes seguidas (ou apresentar pelo proprio PC e depois pelo
+  // celular) nao pode descartar a sessao anterior: salva antes de abrir a nova.
+  endSessionHistory();
   activeSession = history.startSession({
     slidesTotal: totalSlides(),
     pptxName: usingOffice() ? officeState.ppt.name : PPTX_PATH ? path.basename(PPTX_PATH) : null,
@@ -307,7 +268,7 @@ function endSessionHistory() {
 }
 
 function sendHistoryTo(ws) {
-  ws?.send(JSON.stringify({ type: 'history', sessions: history.getRecent(10) }));
+  safeSend(ws, JSON.stringify({ type: 'history', sessions: history.getRecent(10) }));
 }
 
 // Encerra e salva a sessao em andamento se o script for fechado no meio de
@@ -334,7 +295,8 @@ function broadcastThumbsStatus() {
 }
 
 function sendThumbsStatusTo(ws) {
-  ws?.send(
+  safeSend(
+    ws,
     JSON.stringify({
       type: 'thumbs-status',
       available: thumbsAvailable === true,
@@ -352,9 +314,7 @@ function sendCachedThumbsTo(ws) {
   let delay = 0;
   for (const [index, dataUrl] of thumbsCache.entries()) {
     setTimeout(() => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'slide-thumb', index, total: totalSlides(), dataUrl }));
-      }
+      safeSend(ws, JSON.stringify({ type: 'slide-thumb', index, total: totalSlides(), dataUrl }));
     }, delay);
     delay += 40; // espalha o envio pra nao travar conexoes mais lentas (relay)
   }
@@ -560,6 +520,7 @@ function moveMouseRelative(dx, dy) {
 }
 
 function handleIncoming(msg, ws) {
+  if (!msg || typeof msg !== 'object') return;
   if (msg.type === 'command') executeCommand(msg.command, msg);
   else if (msg.type === 'move') moveMouseRelative(msg.dx, msg.dy);
   else if (msg.type === 'click') robot.mouseClick();
@@ -570,8 +531,8 @@ function handleIncoming(msg, ws) {
 // Manda o estado atual (slide corrente, status das miniaturas e as
 // miniaturas ja prontas) pra uma conexao que acabou de abrir ou reconectar.
 function syncNewConnection(ws) {
-  if (officeState) ws?.send(JSON.stringify({ type: 'office-state', ...officeState }));
-  if (officeSlides) ws?.send(JSON.stringify({ type: 'office-slides', ...officeSlides }));
+  if (officeState) safeSend(ws, JSON.stringify({ type: 'office-state', ...officeState }));
+  if (officeSlides) safeSend(ws, JSON.stringify({ type: 'office-slides', ...officeSlides }));
   broadcastSlideInfo();
   sendThumbsStatusTo(ws);
   sendCachedThumbsTo(ws);
@@ -584,9 +545,58 @@ function syncNewConnection(ws) {
 // nunca veria o QR code, mesmo estando na mesma rede Wi-Fi.
 let lastRelayCode = null;
 
+// O proprio Imago serve a tela do celular pela rede local (HTTP na mesma porta
+// do WebSocket). Isso e o que faz o Wi-Fi funcionar a partir do navegador: uma
+// pagina HTTPS (GitHub Pages) NAO pode abrir ws:// (conteudo misto bloqueado
+// pelo Chrome/Safari), mas uma pagina http:// do proprio PC pode. Serve so a
+// lista fixa abaixo -- nada de ler arquivos arbitrarios do disco.
+const STATIC_FILES = {
+  '/': ['index.html', 'text/html; charset=utf-8'],
+  '/index.html': ['index.html', 'text/html; charset=utf-8'],
+  '/app.js': ['app.js', 'application/javascript; charset=utf-8'],
+  '/capacitor.js': ['capacitor.js', 'application/javascript; charset=utf-8'],
+  '/manifest.json': ['manifest.json', 'application/manifest+json; charset=utf-8'],
+  '/version.json': ['version.json', 'application/json; charset=utf-8'],
+  '/icon.svg': ['icon.svg', 'image/svg+xml'],
+  '/icon-192.png': ['icon-192.png', 'image/png'],
+  '/icon-512.png': ['icon-512.png', 'image/png'],
+  '/icon-maskable-512.png': ['icon-maskable-512.png', 'image/png'],
+  '/apple-touch-icon.png': ['apple-touch-icon.png', 'image/png'],
+};
+
+const localHttp = http.createServer((req, res) => {
+  let pathname = '/';
+  try {
+    pathname = new URL(req.url, 'http://imago.local').pathname;
+  } catch { /* URL invalida: cai no 404 abaixo */ }
+  const entry = Object.prototype.hasOwnProperty.call(STATIC_FILES, pathname) ? STATIC_FILES[pathname] : null;
+  if ((req.method !== 'GET' && req.method !== 'HEAD') || !entry) {
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Nao encontrado');
+    return;
+  }
+  let body;
+  try {
+    body = fs.readFileSync(path.join(__dirname, entry[0]));
+  } catch {
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Arquivo do app nao encontrado neste Imago.');
+    return;
+  }
+  res.writeHead(200, {
+    'Content-Type': entry[1],
+    'Content-Length': body.length,
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'no-referrer',
+  });
+  res.end(req.method === 'HEAD' ? undefined : body);
+});
+
 // maxPayload evita que uma conexao mande mensagens gigantes de proposito
 // (nenhum comando legitimo do app precisa de mais que alguns KB).
-const localWss = new WebSocketServer({ port: LOCAL_PORT, host: '0.0.0.0', maxPayload: 65536 });
+localWss = new WebSocketServer({ server: localHttp, maxPayload: 65536 });
+localHttp.listen(LOCAL_PORT, '0.0.0.0');
 localWss.on('listening', () => {
   printConnectionInfo(lastRelayCode);
 });
@@ -595,6 +605,11 @@ localWss.on('error', (err) => {
   console.log('       Verifique se ja ha outro Imago aberto, ou troque a porta com a variavel LOCAL_PORT.');
 });
 localWss.on('connection', (ws) => {
+  // Sem um handler de 'error', um frame invalido ou uma mensagem maior que o
+  // maxPayload vira excecao nao tratada e derruba o Imago (bastava um aparelho
+  // qualquer da rede para isso, sem nem autenticar).
+  ws.on('error', () => {});
+
   // Toda conexao comeca NAO autenticada -- so vira "o celular" depois de
   // mandar {type:'hello', token} com o codigo de seguranca certo. Sem isso,
   // qualquer aparelho na mesma rede Wi-Fi conseguiria controlar a
@@ -611,13 +626,14 @@ localWss.on('connection', (ws) => {
     } catch {
       return; // ignora mensagem invalida
     }
+    // JSON valido mas que nao e objeto (null, 42, "x"): msg.type explodiria.
+    if (!msg || typeof msg !== 'object') return;
 
     if (!ws.authorized) {
       if (msg.type === 'hello' && safeEqual(msg.token, SESSION_TOKEN)) {
         ws.authorized = true;
         clearTimeout(authTimeout);
         console.log('[Local] Celular conectado e autenticado pela rede local.');
-        currentLocalWs = ws;
         ws.send(JSON.stringify({ type: 'hello-ok' }));
         syncNewConnection(ws);
       } else {
@@ -631,10 +647,7 @@ localWss.on('connection', (ws) => {
   });
   ws.on('close', () => {
     clearTimeout(authTimeout);
-    if (currentLocalWs === ws) {
-      console.log('[Local] Celular desconectou.');
-      currentLocalWs = null;
-    }
+    if (ws.authorized) console.log('[Local] Celular desconectou.');
   });
 });
 
@@ -673,6 +686,8 @@ function connectRelay() {
     } catch {
       return;
     }
+
+    if (!msg || typeof msg !== 'object') return;
 
     if (msg.type === 'session-created') {
       currentRelayWs = relayWs;
@@ -727,21 +742,31 @@ function scheduleRelayRetry() {
 }
 
 function printConnectionInfo(relayCode) {
-  const ip = getLocalIp();
+  const ips = network.listLocalIps();
+  const ip = ips.length ? ips[0].address : '127.0.0.1';
   const code = relayCode || '----';
-  const url = `${WEB_APP_URL}/?ip=${ip}&port=${LOCAL_PORT}&token=${SESSION_TOKEN}${relayCode ? `&code=${relayCode}` : ''}`;
+  const query = `ip=${ip}&port=${LOCAL_PORT}&token=${SESSION_TOKEN}${relayCode ? `&code=${relayCode}` : ''}`;
+  // O QR aponta para o proprio PC: abre na hora, funciona sem internet e sem o
+  // bloqueio de conteudo misto do navegador. O link do site publicado serve
+  // para quem esta em dados moveis (precisa do relay).
+  const localUrl = `http://${ip}:${LOCAL_PORT}/?${query}`;
+  const webUrl = `${WEB_APP_URL.replace(/\/$/, '')}/?${query}`;
 
   console.log('\n=== Imago - Controle Remoto de Apresentacao ===');
   console.log(`Rede local (Wi-Fi/offline): ws://${ip}:${LOCAL_PORT}`);
-  console.log(`Codigo para dados moveis:   ${code}${relayCode ? '' : ' (aguardando conexao com o relay...)'}`);
+  if (ips.length > 1) {
+    console.log(`Outros enderecos deste PC:  ${ips.slice(1).map((i) => i.address).join(', ')}  (se o QR nao abrir, troque o IP no celular)`);
+  }
+  console.log(`Codigo para dados moveis:   ${code}${relayCode ? '' : RELAY_NOT_CONFIGURED ? ' (relay nao configurado)' : ' (aguardando conexao com o relay...)'}`);
   console.log(`Codigo de seguranca:        ${SESSION_TOKEN}  (muda toda vez que o Imago abre; so quem tem o QR/link ou digita esse codigo consegue controlar)`);
   if (slidesData.length) {
     console.log(`Notas/titulos carregados de: ${PPTX_PATH} (${slidesData.length} slides)`);
   } else {
     console.log('Nenhuma apresentacao configurada -- rodando so com navegacao (sem notas/miniaturas).');
   }
-  console.log(`\nAbra no celular ou escaneie o QR code abaixo:\n${url}\n`);
-  qrcode.generate(url, { small: true });
+  console.log(`\nAbra no celular (mesma rede Wi-Fi) ou escaneie o QR code abaixo:\n${localUrl}\n`);
+  qrcode.generate(localUrl, { small: true });
+  if (relayCode) console.log(`\nPara usar por dados moveis, abra:\n${webUrl}`);
   console.log('\nDeixe esta janela aberta durante toda a apresentacao.\n');
 }
 
