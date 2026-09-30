@@ -67,14 +67,27 @@ setInterval(cleanupLoop, 60_000).unref();
 const CONNECTIONS_PER_WINDOW = 20;
 const RATE_WINDOW_MS = 60_000;
 const connectionCounts = new Map(); // ip -> { count, windowStart }
+const MAX_TRACKED_IPS = 20000; // teto de memoria para a tabela acima
+
+// Quantos proxies confiaveis (ex.: o balanceador do Render) ficam na frente do
+// relay. Cada proxy ACRESCENTA no fim de X-Forwarded-For o IP de quem falou com
+// ele; o que vem antes disso e escrito pelo proprio cliente e pode ser forjado.
+// Por isso o IP real e contado a partir do FIM da lista, nunca do comeco.
+// 0 = sem proxy (uso direto): o header e ignorado por completo.
+const TRUST_PROXY_HOPS = (() => {
+  const n = Number.parseInt(process.env.TRUST_PROXY_HOPS ?? '1', 10);
+  return Number.isInteger(n) && n >= 0 && n <= 5 ? n : 1;
+})();
 
 function clientIp(req) {
-  // Atras de um proxy (ex: Render), o IP real vem no header -- so confiamos
-  // nele porque o relay so roda atras desse tipo de proxy em producao; em
-  // uso direto (sem proxy), cai no IP do socket mesmo.
-  const forwarded = req.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string' && forwarded.trim()) {
-    return forwarded.split(',')[0].trim();
+  if (TRUST_PROXY_HOPS > 0) {
+    const forwarded = req.headers['x-forwarded-for'];
+    if (typeof forwarded === 'string' && forwarded.trim()) {
+      const parts = forwarded.split(',').map((p) => p.trim()).filter(Boolean);
+      // Lista menor que o esperado = alguem falou direto com o relay: nao da
+      // para confiar em nada dela, entao cai no IP do proprio socket.
+      if (parts.length >= TRUST_PROXY_HOPS) return parts[parts.length - TRUST_PROXY_HOPS].slice(0, 64);
+    }
   }
   return req.socket.remoteAddress || 'desconhecido';
 }
@@ -83,6 +96,7 @@ function isRateLimited(ip) {
   const now = Date.now();
   const entry = connectionCounts.get(ip);
   if (!entry || now - entry.windowStart > RATE_WINDOW_MS) {
+    if (connectionCounts.size >= MAX_TRACKED_IPS) connectionCounts.clear();
     connectionCounts.set(ip, { count: 1, windowStart: now });
     return false;
   }
