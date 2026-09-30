@@ -1,6 +1,6 @@
 {
-  "version": "2.7.2",
-  "notes": "Workflows sem secrets geram apenas artefatos de teste; Releases públicas exigem assinatura e chaves privadas ficam fora do repositório.",
+  "version": "2.7.4",
+  "notes": "Correção final da resolução do plugin Android no Gradle e workflows seguros sem secrets de assinatura.",
   "downloads": {
     "win": {
       "url": "",
