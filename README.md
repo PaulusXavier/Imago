@@ -135,6 +135,15 @@ Teclas enviadas: → ← (slides), Home/End, F5, Esc, B, W, Ctrl+L (laser) e nú
 
 - O APK passa a pedir a permissão de **Câmera** (`CAMERA`), usada só para ler o QR.
 
+### Correções da terceira revisão (build e empacotamento)
+
+- **Gradle do Android estava nos lugares errados:** o `build.gradle` da raiz do projeto Android estava na raiz do repositório, e o `android/build.gradle` continha o script do módulo `app`. Isso quebrava o `./gradlew`. Agora `android/build.gradle` é o script raiz e `android/app/build.gradle` é o do módulo (com assinatura de release via variáveis de ambiente e `versionName` vindo do `package.json`).
+- **Chave de assinatura pública removida:** `android/app/imago.keystore` (com a senha escrita no `build.gradle`) saiu do projeto. Quem já instalou um APK assinado com ela precisará desinstalar uma vez antes de instalar o APK assinado com a nova chave privada (secrets `ANDROID_*`).
+- **`.gitignore` de verdade:** o arquivo se chamava `gitignore` (sem o ponto) e não protegia nada; `node_modules/`, `dist/`, `www/` e chaves iam para o repositório.
+- **`apk.yml` duplicado da raiz removido** (a versão certa fica em `.github/workflows/`).
+- **Service worker:** `jsqr.min.js` entrou no cache offline (o leitor de QR falhava sem internet) e, quando um `.js`/imagem falta no cache, não devolve mais o `index.html` no lugar (só navegação cai no `index.html`).
+- **`app.js`:** respostas `null` do PC/relay durante a conexão não geram mais erro no console.
+
 ### Correções da revisão de código (sobre a 2.7)
 
 - **Web Bluetooth:** títulos e notas com acento (ã, é, ç…) chegavam corrompidos (`��`) quando o texto era dividido em pacotes de 20 bytes; agora o texto é remontado corretamente. Se a autenticação falha, a conexão Bluetooth também é encerrada (antes ficava aberta no PC).
