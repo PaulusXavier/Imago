@@ -369,7 +369,10 @@ const office = (() => {
       let script;
       try {
         script = path.join(os.tmpdir(), 'imago-office-bridge.ps1');
-        fs.writeFileSync(script, fs.readFileSync(path.join(__dirname, 'office-bridge.ps1')));
+        const externalScript = path.join(process.pkg ? path.dirname(process.execPath) : __dirname, 'office-bridge.ps1');
+        const bundledScript = path.join(__dirname, 'office-bridge.ps1');
+        const sourceScript = process.pkg && fs.existsSync(externalScript) ? externalScript : bundledScript;
+        fs.writeFileSync(script, fs.readFileSync(sourceScript));
       } catch (err) {
         this.emit('error', new Error('nao consegui preparar o office-bridge.ps1: ' + err.message));
         return false;
