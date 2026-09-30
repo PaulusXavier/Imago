@@ -1,9 +1,12 @@
-// Testes isolados da lógica de segurança (as MESMAS implementações usadas
-// em updater.js / relay-server.js / controller.js), sem depender de
-// 'ws' nem 'adm-zip' instalados (rede indisponível neste ambiente).
+// Testes da lógica de segurança.
+//  - Funções do atualizador: importadas do modules.js (código REAL, precisa de "npm ci").
+//  - safeEqual / makeCode / generateSessionToken: ficam em controller.js e relay-server.js,
+//    que abrem servidores ao serem carregados e por isso não podem ser importados aqui;
+//    o teste usa uma CÓPIA delas -- se mudar lá, mude aqui também.
 const assert = require('assert');
 const crypto = require('crypto');
 const path = require('path');
+const { updater } = require('./modules');
 
 let passed = 0;
 function test(name, fn) {
@@ -18,16 +21,8 @@ function test(name, fn) {
   }
 }
 
-console.log('== compareVersions (updater.js) ==');
-function compareVersions(a, b) {
-  const pa = String(a).split('.').map((n) => parseInt(n, 10) || 0);
-  const pb = String(b).split('.').map((n) => parseInt(n, 10) || 0);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const diff = (pa[i] || 0) - (pb[i] || 0);
-    if (diff !== 0) return diff;
-  }
-  return 0;
-}
+console.log('== compareVersions (modules.js > updater) ==');
+const { compareVersions, hashesMatch, isValidManifest, isValidPlatformEntry } = updater;
 test('1.2.0 > 1.1.0', () => assert.ok(compareVersions('1.2.0', '1.1.0') > 0));
 test('1.1.0 == 1.1.0', () => assert.strictEqual(compareVersions('1.1.0', '1.1.0'), 0));
 test('1.1.0 < 1.10.0 (nao trata como string)', () => assert.ok(compareVersions('1.1.0', '1.10.0') < 0));
@@ -45,14 +40,7 @@ test('token diferente == false', () => assert.strictEqual(safeEqual('ABC123XYZ9'
 test('token de tamanho diferente nao lanca erro', () => assert.strictEqual(safeEqual('ABC', 'ABCDE'), false));
 test('token undefined nao lanca erro', () => assert.strictEqual(safeEqual(undefined, 'ABC'), false));
 
-console.log('\n== hashesMatch (SHA-256, updater.js) ==');
-function hashesMatch(a, b) {
-  if (typeof a !== 'string' || typeof b !== 'string') return false;
-  const bufA = Buffer.from(a.toLowerCase(), 'hex');
-  const bufB = Buffer.from(b.toLowerCase(), 'hex');
-  if (bufA.length !== 32 || bufB.length !== 32) return false;
-  return crypto.timingSafeEqual(bufA, bufB);
-}
+console.log('\n== hashesMatch (SHA-256, modules.js > updater) ==');
 const h1 = crypto.createHash('sha256').update('conteudo-a').digest('hex');
 const h2 = crypto.createHash('sha256').update('conteudo-b').digest('hex');
 test('hash igual (mesmo caso) == true', () => assert.strictEqual(hashesMatch(h1, h1), true));
@@ -60,34 +48,16 @@ test('hash igual (caixa alta) == true', () => assert.strictEqual(hashesMatch(h1,
 test('hash diferente == false', () => assert.strictEqual(hashesMatch(h1, h2), false));
 test('hash malformado nao lanca erro', () => assert.strictEqual(hashesMatch('nao-e-hex', h1), false));
 test('hash vazio == false', () => assert.strictEqual(hashesMatch('', ''), false));
+test('hash com tamanho errado == false', () => assert.strictEqual(hashesMatch(h1.slice(0, 62), h1.slice(0, 62)), false));
 
-console.log('\n== isValidManifest / isValidPlatformEntry (updater.js) ==');
-function isValidManifest(manifest) {
-  return Boolean(
-    manifest &&
-      typeof manifest === 'object' &&
-      typeof manifest.version === 'string' &&
-      /^\d+\.\d+\.\d+$/.test(manifest.version) &&
-      (manifest.notes === undefined || typeof manifest.notes === 'string') &&
-      manifest.downloads &&
-      typeof manifest.downloads === 'object'
-  );
-}
-function isValidPlatformEntry(entry) {
-  return Boolean(
-    entry &&
-      typeof entry === 'object' &&
-      typeof entry.url === 'string' &&
-      entry.url.startsWith('https://') &&
-      typeof entry.sha256 === 'string' &&
-      /^[a-f0-9]{64}$/i.test(entry.sha256)
-  );
-}
+console.log('\n== isValidManifest / isValidPlatformEntry (modules.js > updater) ==');
 test('manifesto valido aceito', () =>
   assert.strictEqual(isValidManifest({ version: '1.2.0', downloads: {} }), true));
 test('manifesto sem version rejeitado', () => assert.strictEqual(isValidManifest({ downloads: {} }), false));
 test('manifesto com version nao-semver rejeitado', () =>
   assert.strictEqual(isValidManifest({ version: 'v1', downloads: {} }), false));
+test('manifesto com notes de tipo errado rejeitado', () =>
+  assert.strictEqual(isValidManifest({ version: '1.2.0', notes: 5, downloads: {} }), false));
 test('manifesto null rejeitado', () => assert.strictEqual(isValidManifest(null), false));
 test('manifesto string (injecao de tipo) rejeitado', () => assert.strictEqual(isValidManifest('1.2.0'), false));
 test('entry https + sha256 valido aceito', () =>
@@ -98,16 +68,9 @@ test('entry sha256 curto rejeitado', () =>
   assert.strictEqual(isValidPlatformEntry({ url: 'https://x.com/a.zip', sha256: 'abc' }), false));
 test('entry sem sha256 rejeitado', () => assert.strictEqual(isValidPlatformEntry({ url: 'https://x.com/a.zip' }), false));
 
-console.log('\n== assertSafeZipEntries (zip slip, updater.js) ==');
-function assertSafeZipEntries(entries, destDir) {
-  const destRoot = path.resolve(destDir);
-  for (const entry of entries) {
-    const resolved = path.resolve(destDir, entry.entryName);
-    if (resolved !== destRoot && !resolved.startsWith(destRoot + path.sep)) {
-      throw new Error(`Entrada suspeita no arquivo de atualização: "${entry.entryName}".`);
-    }
-  }
-}
+console.log('\n== assertSafeZipEntries (zip slip, modules.js > updater) ==');
+const assertSafeZipEntries = (entries, destDir) =>
+  updater.assertSafeZipEntries({ getEntries: () => entries }, destDir);
 const dest = '/tmp/fake-extract-dir';
 test('entradas normais passam', () => {
   assertSafeZipEntries([{ entryName: 'Imago.exe' }, { entryName: 'node_modules/robotjs/x.node' }], dest);
@@ -151,9 +114,8 @@ test('codigos gerados sao unicos (nao colidem com os ja existentes)', () => {
 console.log('\n== generateSessionToken (controller.js) — alfabeto e tamanho ==');
 const TOKEN_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 function generateSessionToken(length = 10) {
-  const bytes = crypto.randomBytes(length);
   let out = '';
-  for (let i = 0; i < length; i++) out += TOKEN_ALPHABET[bytes[i] % TOKEN_ALPHABET.length];
+  for (let i = 0; i < length; i++) out += TOKEN_ALPHABET[crypto.randomInt(TOKEN_ALPHABET.length)];
   return out;
 }
 test('token tem o tamanho esperado e so usa o alfabeto sem ambiguos', () => {
