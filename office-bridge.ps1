@@ -431,8 +431,11 @@ function Handle-Command($c) {
     }
     'thumbs' {
       if ($c.width) { $script:thumbW = [Math]::Max(120, [Math]::Min(800, [int]$c.width)) }
-      foreach ($i in $c.indices) {
+      # Limita o pedido (uma lista gigante travaria a ponte gerando miniaturas sem fim).
+      foreach ($i in @($c.indices | Select-Object -First 500)) {
         $n = [int]$i
+        if ($n -lt 1 -or $n -gt 5000) { continue }
+        if ($script:thumbQueue.Count -ge 2000) { break }
         if (-not $script:thumbQueue.Contains($n)) { [void]$script:thumbQueue.Add($n) }
       }
     }
