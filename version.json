@@ -1,6 +1,6 @@
 {
-  "version": "2.3.0",
-  "notes": "Bluetooth pelo app web/PWA via BLE, com autenticação e fallback de rede.",
+  "version": "2.4.0",
+  "notes": "Redesign inspirado no Office Remote: interface clara, controles grandes e navegação focada em slides.",
   "downloads": {
     "win": { "url": "", "sha256": "" },
     "mac": { "url": "", "sha256": "" },
