@@ -22,6 +22,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { config: appConfig, setup, thumbnails, history, updater, office } = require('./modules');
+const webBleBridge = require('./web-ble-bridge');
 
 // "Imago.exe --configurar" abre o assistente de configuracao em vez de
 // iniciar o controle normalmente -- e o que o atalho "Configurar" (veja
@@ -227,6 +228,7 @@ let currentSlide = slidesData.length ? 1 : 0;
 // ---------- Conexoes ativas (para poder mandar mensagens pra elas) ----------
 let currentLocalWs = null;
 let currentRelayWs = null;
+let webBle = { broadcast() {} };
 // Vira true so depois que o lado do relay manda o "hello" com o token
 // correto (ver connectRelay abaixo) -- broadcast() nao manda nada sensivel
 // (notas do apresentador, miniaturas) pro relay antes disso.
@@ -236,6 +238,7 @@ function broadcast(payload) {
   const json = JSON.stringify(payload);
   currentLocalWs?.send(json);
   if (relayAuthorized) currentRelayWs?.send(json);
+  webBle.broadcast(payload);
 }
 
 // ---------- Estado real do Office (via ponte COM, so no Windows) ----------
@@ -745,6 +748,16 @@ office.on('thumb', (msg) => {
 });
 if (office.isSupported()) office.start();
 process.on('exit', () => office.stop());
+
+webBle = webBleBridge.start({
+  token: SESSION_TOKEN,
+  onMessage: (msg) => handleIncoming(msg, null),
+  onConnect: () => {
+    broadcastSlideInfo();
+    broadcastThumbsStatus();
+  },
+  log: (message) => console.log(message),
+});
 
 connectRelay();
 // Com a ponte COM (Windows) as miniaturas vem do proprio PowerPoint; o
