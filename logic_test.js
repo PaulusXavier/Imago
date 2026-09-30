@@ -132,4 +132,85 @@ test('dois tokens gerados nao sao iguais (entropia minima)', () => {
   assert.notStrictEqual(a, b);
 });
 
+console.log('\n== parseImagoLink (app.js) — link do QR code lido pela camera ==');
+{
+  // Usa o CODIGO REAL do app.js (extrai a funcao); "URL" ja existe no Node.
+  const src = require('fs').readFileSync(path.join(__dirname, 'app.js'), 'utf8');
+  const a = src.indexOf('function parseImagoLink');
+  const b = src.indexOf('function applyConnectionLink');
+  assert.ok(a > 0 && b > a, 'parseImagoLink nao encontrada no app.js');
+  const parseImagoLink = new Function(`${src.slice(a, b)}; return parseImagoLink;`)();
+  test('link do QR local traz ip, porta e codigo de seguranca (em maiusculas)', () => {
+    const d = parseImagoLink('http://192.168.0.10:8765/?ip=192.168.0.10&port=8765&token=7k2qxm9f3p');
+    assert.deepStrictEqual(d, { ip: '192.168.0.10', port: '8765', code: '', token: '7K2QXM9F3P' });
+  });
+  test('link com codigo do relay (dados moveis) e aceito', () => {
+    const d = parseImagoLink('https://exemplo.github.io/imago/?ip=10.0.0.5&port=8765&token=ABC&code=123456');
+    assert.strictEqual(d.code, '123456');
+  });
+  test('QR que nao e do Imago (texto, site sem ip/code) e recusado', () => {
+    assert.strictEqual(parseImagoLink('WIFI:S:casa;T:WPA;P:senha;;'), null);
+    assert.strictEqual(parseImagoLink('https://google.com/?q=oi'), null);
+    assert.strictEqual(parseImagoLink(''), null);
+    assert.strictEqual(parseImagoLink(undefined), null);
+  });
+  test('valores malformados no link sao recusados', () => {
+    assert.strictEqual(parseImagoLink('http://x/?ip=a b<script>&token=A'), null);
+    assert.strictEqual(parseImagoLink('http://x/?ip=10.0.0.1&port=99999&token=A'), null);
+    assert.strictEqual(parseImagoLink('http://x/?code=12ab&token=A'), null);
+    assert.strictEqual(parseImagoLink('javascript:alert(1)'), null);
+  });
+}
+
+console.log('\n== notas pessoais por apresentacao (app.js) ==');
+{
+  const src = require('fs').readFileSync(path.join(__dirname, 'app.js'), 'utf8');
+  const a = src.indexOf('let currentDeckKey');
+  const b = src.indexOf('// ---------- Conexão ----------');
+  assert.ok(a > 0 && b > a, 'bloco de notas nao encontrado no app.js');
+  function makeNotes(initial = {}) {
+    const store = new Map(Object.entries(initial));
+    const window = { localStorage: {
+      get length() { return store.size; },
+      key: (i) => [...store.keys()][i] ?? null,
+      getItem: (k) => (store.has(k) ? store.get(k) : null),
+      setItem: (k, v) => store.set(k, String(v)),
+      removeItem: (k) => store.delete(k),
+    } };
+    const storageGet = (k) => window.localStorage.getItem(k);
+    const storageSet = (k, v) => window.localStorage.setItem(k, v);
+    const api = new Function('window', 'storageGet', 'storageSet',
+      `${src.slice(a, b)}; return { set: (n) => { currentDeckKey = deckKeyFrom(n); }, key: notesKey, migrate: migrateLegacyNotes, deck: deckKeyFrom };`)(window, storageGet, storageSet);
+    return { store, api };
+  }
+  test('mesmo numero de slide em apresentacoes diferentes nao compartilha nota', () => {
+    const { api } = makeNotes();
+    api.set('Aula 1.pptx'); const k1 = api.key(3);
+    api.set('Prova.pptx'); const k2 = api.key(3);
+    assert.notStrictEqual(k1, k2);
+  });
+  test('o nome e normalizado (maiusculas e extensao nao criam outra apresentacao)', () => {
+    const { api } = makeNotes();
+    assert.strictEqual(api.deck('Aula 1.PPTX'), api.deck('aula 1.pptx'));
+    assert.strictEqual(api.deck('Aula 1.pptx'), api.deck('Aula 1'));
+  });
+  test('PC antigo (sem nome) continua na chave antiga', () => {
+    const { api } = makeNotes();
+    api.set('');
+    assert.strictEqual(api.key(2), 'imago-notes-2');
+  });
+  test('notas antigas passam para a primeira apresentacao aberta e nao se repetem', () => {
+    const { store, api } = makeNotes({ 'imago-notes-1': 'abertura', 'imago-notes-4': 'fechamento', 'imago-notes-size': '18' });
+    api.set('Aula 1.pptx');
+    api.migrate();
+    assert.strictEqual(store.get(api.key(1)), 'abertura');
+    assert.strictEqual(store.get(api.key(4)), 'fechamento');
+    assert.ok(!store.has('imago-notes-1') && !store.has('imago-notes-4'));
+    assert.strictEqual(store.get('imago-notes-size'), '18', 'nao pode mexer no tamanho da fonte das notas');
+    api.set('Prova.pptx');
+    api.migrate();
+    assert.strictEqual(store.get(api.key(1)) ?? null, null, 'a segunda apresentacao nao herda as notas');
+  });
+}
+
 console.log(`\n${passed} teste(s) passaram.`);
