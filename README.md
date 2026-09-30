@@ -89,6 +89,22 @@ Teclas enviadas: → ← (slides), Home/End, F5, Esc, B, W, Ctrl+L (laser) e nú
 - **GitHub Actions:** o `pc.yml` tinha `secrets` dentro de `if:` (o GitHub rejeita o workflow inteiro); corrigido. Os dois workflows rodam `npm test`, e o `apk.yml` solto na raiz foi removido (a versão certa fica em `.github/workflows/`).
 - Assistente de configuração encontra `.pptx` em pastas dentro do OneDrive; `versionName` do APK vem do `package.json`; backup automático do Android desligado (o app guarda o código de segurança).
 
+### Segunda revisão (segurança e detalhes)
+
+- **Relay — limite de conexões não pode mais ser burlado:** o relay usava o *primeiro* IP do `X-Forwarded-For`, que quem se conecta escreve sozinho; bastava mudar esse cabeçalho a cada tentativa para escapar do limite e testar códigos de 6 dígitos em massa. Agora o IP é contado a partir do **fim** da lista (o que o proxy confiável acrescentou). Se o seu relay tiver mais de um proxy na frente, defina `TRUST_PROXY_HOPS` (padrão `1`; `0` = sem proxy, ignora o cabeçalho). O teste do relay agora cobre esse ataque.
+- **Notas pessoais por apresentação:** as notas que você escreve no celular eram guardadas só pelo número do slide, então o "slide 3" de uma apresentação mostrava as notas do "slide 3" de outra. Agora cada apresentação tem as suas (o PC passa o nome do arquivo em `slide-info`). As notas antigas passam, uma única vez, para a primeira apresentação aberta depois da atualização. Com um PC ainda na versão anterior, tudo funciona como antes.
+- **QR/link de outro PC:** ao escanear ou colar o link, IP, porta, código do relay e código de segurança do PC anterior são limpos, para não se misturarem com os do novo.
+- **Câmera:** o pedido de permissão do Android não cancela mais a leitura na primeira vez; *Esc*/voltar fecham a câmera em qualquer etapa.
+- **Miniaturas:** o app só aceita miniatura no formato de imagem embutida (`data:image/png|jpeg;base64`).
+- **Ponte do Office:** o pedido de miniaturas do celular agora tem limite (uma lista enorme travava a ponte).
+
+### Leitura do QR code dentro do app
+
+- Novo botão **📷 Escanear QR code do PC** na tela de conexão: abre a câmera, lê o QR do Imago e já conecta (preenche IP, porta e código de segurança sozinho). Se o QR não for do Imago, o app avisa e continua procurando.
+- Funciona no **app Android (APK)** e no **site publicado (HTTPS)**. Na página servida pelo próprio PC (`http://IP:8765`) o navegador não libera a câmera; ali o botão fica escondido, mas essa página já foi aberta justamente por um QR.
+- O decodificador é o [jsQR](https://github.com/cozmo/jsQR) (Apache-2.0, arquivo `jsqr.min.js` + `LICENSE-jsqr.txt`), local, sem enviar imagem a lugar nenhum; só é carregado na primeira leitura e fica no cache do app.
+- O APK passa a pedir a permissão de **Câmera** (`CAMERA`), usada só para ler o QR.
+
 ### Correções da revisão de código (sobre a 2.7)
 
 - **Web Bluetooth:** títulos e notas com acento (ã, é, ç…) chegavam corrompidos (`��`) quando o texto era dividido em pacotes de 20 bytes; agora o texto é remontado corretamente. Se a autenticação falha, a conexão Bluetooth também é encerrada (antes ficava aberta no PC).
@@ -290,7 +306,7 @@ O pacote também inclui `Imago.exe.sha256`. Para conferir o arquivo no PowerShel
 
 1. Abra o PowerPoint/Prezi em modo de apresentação.
 
-1. Abra o ícone do Imago no celular (o que você instalou na tela inicial) e escaneie o QR code que apareceu no PC.
+1. Abra o Imago no celular e toque em **📷 Escanear QR code do PC**: aponte a câmera para o QR que apareceu no PC e ele conecta sozinho. (Também funciona escanear com a câmera do celular, colar o link ou digitar o IP.)
 
 1. Use os botões de próximo/anterior, ou arraste o dedo pros lados.
 
