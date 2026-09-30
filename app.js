@@ -1584,19 +1584,152 @@ setNetworkMode(networkMode);
 [els.inputIp, els.inputPort, els.inputToken, els.inputCode].forEach((f) => f.addEventListener('input', () => showFormError('')));
 els.inputToken.addEventListener('input', () => { els.inputToken.value = els.inputToken.value.toUpperCase().replace(/\s/g, ''); });
 document.querySelectorAll('#wifi-card input').forEach((f) => f.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleConnect(); }));
+// Le o link do QR (http://IP:porta/?ip=&port=&token=&code=) e devolve os dados,
+// ou null se nao for um link do Imago. Usado ao colar o link e ao escanear o QR.
+function parseImagoLink(text) {
+  let u;
+  try { u = new URL(String(text ?? '').trim()); } catch { return null; }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+  const p = u.searchParams;
+  const ip = (p.get('ip') || '').trim();
+  const code = (p.get('code') || '').trim();
+  const port = (p.get('port') || '').trim();
+  if (!ip && !code) return null;
+  if (ip && !/^[\w.\-]+$/.test(ip)) return null;
+  if (port && (!/^\d{2,5}$/.test(port) || Number(port) < 1 || Number(port) > 65535)) return null;
+  if (code && !/^\d{6}$/.test(code)) return null;
+  return { ip, port, code, token: (p.get('token') || '').trim().toUpperCase() };
+}
+function applyConnectionLink(text) {
+  const d = parseImagoLink(text);
+  if (!d) return false;
+  if (d.ip) els.inputIp.value = d.ip;
+  if (d.port) els.inputPort.value = d.port;
+  if (d.code) els.inputCode.value = d.code;
+  if (d.token) { sessionToken = d.token; els.inputToken.value = sessionToken; }
+  showFormError('');
+  return true;
+}
 document.getElementById('input-link').addEventListener('input', (e) => {
-  try {
-    const p = new URL(e.target.value.trim()).searchParams;
-    if (!p.get('ip') && !p.get('code')) return;
-    if (p.get('ip')) els.inputIp.value = p.get('ip');
-    if (p.get('port')) els.inputPort.value = p.get('port');
-    if (p.get('code')) els.inputCode.value = p.get('code');
-    if (p.get('token')) { sessionToken = p.get('token'); els.inputToken.value = sessionToken; }
-    e.target.value = '';
-    showFormError('');
-    toast('Link lido. Toque em Conectar.');
-  } catch { /* ainda não é um link completo */ }
+  if (!applyConnectionLink(e.target.value)) return; // ainda não é um link completo
+  e.target.value = '';
+  toast('Link lido. Toque em Conectar.');
 });
+
+// ---------- Escanear o QR code do PC pela câmera ----------
+// A câmera só abre por HTTPS (site publicado) ou dentro do app Android; o
+// decodificador (jsqr.min.js) é local e só é carregado na primeira leitura.
+const qrEls = {
+  button: document.getElementById('btn-scan-qr'),
+  overlay: document.getElementById('qr-scanner'),
+  video: document.getElementById('qr-video'),
+  msg: document.getElementById('qr-scan-msg'),
+  cancel: document.getElementById('btn-scan-cancel'),
+};
+let qrStream = null;
+let qrTimer = 0;
+let qrSession = 0;
+let jsQrLoading = null;
+
+function loadJsQr() {
+  if (typeof window.jsQR === 'function') return Promise.resolve(window.jsQR);
+  if (jsQrLoading) return jsQrLoading;
+  jsQrLoading = new Promise((resolve, reject) => {
+    const tag = document.createElement('script');
+    tag.src = 'jsqr.min.js';
+    tag.onload = () => (typeof window.jsQR === 'function' ? resolve(window.jsQR) : reject(new Error('jsqr-missing')));
+    tag.onerror = () => reject(new Error('jsqr-missing'));
+    document.head.appendChild(tag);
+  }).catch((err) => { jsQrLoading = null; throw err; });
+  return jsQrLoading;
+}
+
+function closeQrScanner() {
+  qrSession++;
+  clearTimeout(qrTimer);
+  if (qrStream) qrStream.getTracks().forEach((t) => t.stop());
+  qrStream = null;
+  qrEls.video.srcObject = null;
+  qrEls.overlay.classList.add('hidden');
+}
+
+function qrCameraError(err) {
+  const name = err?.name || err?.message || '';
+  if (name === 'NotAllowedError' || name === 'SecurityError' || name === 'PermissionDeniedError') {
+    return 'Sem permissão para usar a câmera. Libere a câmera para o Imago nas configurações do celular, ou cole o link / digite o IP.';
+  }
+  if (name === 'NotFoundError' || name === 'OverconstrainedError' || name === 'DevicesNotFoundError') return 'Não encontrei uma câmera neste aparelho.';
+  if (name === 'NotReadableError' || name === 'TrackStartError') return 'A câmera está sendo usada por outro app. Feche-o e tente de novo.';
+  if (name === 'jsqr-missing') return 'Não consegui carregar o leitor de QR. Conecte à internet uma vez para baixá-lo, ou cole o link.';
+  return 'Não foi possível abrir a câmera. Cole o link do PC ou digite o IP.';
+}
+
+async function openQrScanner() {
+  if (qrStream || !els.controlScreen.classList.contains('hidden')) return;
+  if (!navigator.mediaDevices?.getUserMedia || (!window.isSecureContext && !isApk)) {
+    toast('A câmera só funciona pelo app Android ou pelo site em HTTPS. Aqui, cole o link ou digite o IP.');
+    return;
+  }
+  const session = ++qrSession;
+  qrEls.msg.textContent = 'Abrindo a câmera…';
+  qrEls.overlay.classList.remove('hidden');
+  let stream = null;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false,
+    });
+    if (session !== qrSession) { stream.getTracks().forEach((t) => t.stop()); return; } // cancelou enquanto abria
+    const jsQR = await loadJsQr();
+    if (session !== qrSession) { stream.getTracks().forEach((t) => t.stop()); return; }
+    qrStream = stream;
+    qrEls.video.srcObject = stream;
+    await qrEls.video.play().catch(() => {});
+    qrEls.msg.textContent = 'Aponte para o QR code que aparece na tela do PC.';
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const tick = () => {
+      if (session !== qrSession) return;
+      const v = qrEls.video;
+      if (v.readyState >= 2 && v.videoWidth) {
+        const scale = Math.min(1, 640 / v.videoWidth);
+        const w = Math.max(1, Math.round(v.videoWidth * scale));
+        const h = Math.max(1, Math.round(v.videoHeight * scale));
+        if (canvas.width !== w) canvas.width = w;
+        if (canvas.height !== h) canvas.height = h;
+        ctx.drawImage(v, 0, 0, w, h);
+        const img = ctx.getImageData(0, 0, w, h);
+        const found = jsQR(img.data, w, h, { inversionAttempts: 'dontInvert' });
+        if (found?.data) {
+          if (applyConnectionLink(found.data)) {
+            closeQrScanner();
+            vibrate(40);
+            toast('QR code lido. Conectando…');
+            handleConnect();
+            return;
+          }
+          qrEls.msg.textContent = 'Esse QR code não é do Imago. Aponte para o QR da tela do PC.';
+        }
+      }
+      qrTimer = setTimeout(tick, 120);
+    };
+    tick();
+  } catch (err) {
+    if (stream && stream !== qrStream) stream.getTracks().forEach((t) => t.stop());
+    if (session === qrSession) {
+      closeQrScanner();
+      toast(qrCameraError(err));
+    }
+  }
+}
+
+qrEls.button.addEventListener('click', openQrScanner);
+qrEls.cancel.addEventListener('click', closeQrScanner);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && qrStream) closeQrScanner(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && !qrEls.overlay.classList.contains('hidden')) closeQrScanner(); });
+// Em http:// (pagina servida pelo proprio PC) o navegador nao libera a camera: esconde o botao.
+if (!isApk && (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia)) qrEls.button.classList.add('hidden');
 if (isApk) document.getElementById('net-divider').classList.remove('hidden');
 if (!isApk) {
   els.webBleCard?.classList.remove('hidden');
