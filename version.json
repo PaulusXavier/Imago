@@ -1,6 +1,6 @@
 {
-  "version": "2.7.4",
-  "notes": "Correção final da resolução do plugin Android no Gradle e workflows seguros sem secrets de assinatura.",
+  "version": "2.7.5",
+  "notes": "Plugin Android com versão explícita no módulo para evitar falhas no GitHub Actions.",
   "downloads": {
     "win": {
       "url": "",
