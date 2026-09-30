@@ -100,6 +100,7 @@ Teclas enviadas: → ← (slides), Home/End, F5, Esc, B, W, Ctrl+L (laser) e nú
 | "Nenhum computador pareado" | Pareie o celular com o PC no Windows (*Configurações › Bluetooth*); se aparecer uma lista no app, escolha o seu PC. |
 | Conecta, mas o slide não muda | Clique uma vez na janela do PowerPoint/Prezi (ela precisa estar em foco) e use o modo apresentação. |
 | Não conecta pela internet | Confira `RELAY_URL` no `app.js`. No plano gratuito do Render o relay leva até ~1 min para acordar. |
+| O terminal repete mensagens do relay | Se você só usa Wi-Fi, deixe o relay sem configurar: o Imago não tenta conectar. Se o relay estiver configurado e cair, as tentativas agora usam intervalos progressivos e não interrompem o Wi-Fi local. |
 
 ## Limitações
 
