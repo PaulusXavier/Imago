@@ -250,7 +250,7 @@ function updateTimerDisplay() {
 
 function send(payload) {
   if (btMode) return btSend(payload);
-  if (webBleMode) return webBleSend(payload);
+  if (webBleMode) { webBleSend(payload).catch(() => {}); return; }
   if (!socket || socket.readyState !== WebSocket.OPEN) {
     if (payload.type === 'command') toast('Sem conexão com o PC. Aguarde a reconexão ou conecte de novo.');
     return;
@@ -632,7 +632,9 @@ async function tryConnect({ ip, port, code }) {
   if (networkMode !== 'internet' && ip) {
     try {
       return await connectLocal(ip, port || '8765');
-    } catch {
+    } catch (err) {
+      // Codigo de seguranca errado vale para qualquer caminho: tentar o relay so atrasa.
+      if (err && err.message === 'auth-failed') throw err;
       if (networkMode === 'wifi') throw new Error('wifi-failed');
       /* no modo automático, cai para o relay */
     }
@@ -682,6 +684,8 @@ async function handleConnect() {
     reconnectAttempts = 0;
     lastConnectionParams = params;
     saveLastConnection(params);
+    // O token nao precisa ficar visivel na barra de enderecos / historico.
+    try { if (location.search) history.replaceState(null, '', location.pathname); } catch { /* ignora */ }
     wireSocketLifecycle(ws);
     wireIncomingMessages(ws);
     setStatus(true, connectionTransport === 'wifi' ? 'Conectado (Wi-Fi local)' : 'Conectado (dados móveis/internet)');
@@ -734,8 +738,15 @@ async function attemptAutoReconnect() {
     els.reconnectBanner.classList.add('hidden');
     setStatus(true, connectionTransport === 'wifi' ? 'Reconectado (Wi-Fi local)' : 'Reconectado (dados móveis/internet)');
     isReconnecting = false;
-  } catch {
+  } catch (err) {
     isReconnecting = false;
+    if (err && err.message === 'auth-failed') {
+      // O Imago do PC foi fechado e reaberto: o codigo de seguranca mudou.
+      toast('O Imago do PC foi reiniciado (o código de segurança mudou). Escaneie o QR code de novo.');
+      setStatus(false, 'Desconectado');
+      showConnectScreen();
+      return;
+    }
     attemptAutoReconnect();
   }
 }
@@ -1122,9 +1133,12 @@ function btSend(payload) {
     if (!btMoveTimer) {
       btMoveTimer = setTimeout(() => {
         btMoveTimer = null;
-        const { dx, dy } = btMoveAcc;
-        btMoveAcc = { dx: 0, dy: 0 };
-        if (dx || dy) BtHid.mouseMove({ dx, dy }).catch(() => {});
+        const sx = Math.round(btMoveAcc.dx);
+        const sy = Math.round(btMoveAcc.dy);
+        // Guarda o resto fracionario: arrastes lentos (<0,5 px por quadro)
+        // eram arredondados para 0 e o cursor nao andava.
+        btMoveAcc = { dx: btMoveAcc.dx - sx, dy: btMoveAcc.dy - sy };
+        if (sx || sy) BtHid.mouseMove({ dx: sx, dy: sy }).catch(() => {});
       }, 16);
     }
     return;
@@ -1146,6 +1160,14 @@ function btRender(state) {
   if (msg) msg.textContent = state.message || '';
   btUpdateGuide(state);
   const connected = state.state === 'connected';
+  const onConnectScreen = els.controlScreen.classList.contains('hidden');
+  if (connected && !btUserLeft && onConnectScreen) {
+    // Conectou (reconexao automatica ao abrir o app, ou o Windows conectou
+    // sozinho): entra direto no controle. Antes isso so acontecia com btMode
+    // desligado, e a reconexao automatica deixava o app parado na tela de conexao.
+    btEnter(state);
+    return;
+  }
   if (btMode) {
     setStatus(connected, connected ? `Bluetooth: ${state.hostName || 'PC'}` : 'Bluetooth desconectado');
     els.reconnectBanner.textContent = 'Bluetooth caiu — reconectando…';
@@ -1156,9 +1178,6 @@ function btRender(state) {
       clearTimeout(btRetryTimer);
       btRetryTimer = null;
     }
-  } else if (connected && !btUserLeft && els.controlScreen.classList.contains('hidden')) {
-    // O Windows conectou sozinho (já pareado): entra direto no controle.
-    btEnter(state);
   }
 }
 
@@ -1526,7 +1545,7 @@ if (!isApk) {
   else if (!window.isSecureContext) setWebBleMessage('Abra o Imago por HTTPS para liberar Bluetooth web.');
 }
 
-prefillFromUrl();
+const openedFromQr = prefillFromUrl();
 prefillFromStorage();
 (function quickReconnect() {
   const last = loadLastConnection();
@@ -1537,6 +1556,12 @@ prefillFromStorage();
   q.addEventListener('click', handleConnect);
   document.getElementById('wifi-card').open = true;
 })();
+
+// Abriu pelo link do QR (traz IP + codigo de seguranca)? Conecta sozinho, como
+// o Office Remote: escanear e pronto.
+if (openedFromQr && sessionToken && !isApk) {
+  setTimeout(() => { if (!socket && !btMode) handleConnect(); }, 150);
+}
 
 if ('serviceWorker' in navigator && !isApk) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
