@@ -1,16 +1,27 @@
 apply plugin: 'com.android.application'
 
+// A versao exibida do APK acompanha a do package.json.
+def imagoPackage = new groovy.json.JsonSlurper().parse(file('../../package.json'))
+
 android {
     namespace = "br.paulusxavier.imago"
     compileSdk = rootProject.ext.compileSdkVersion
-    // Chave fixa: assim cada APK novo ATUALIZA o anterior (sem desinstalar).
+    // A chave de publicação nunca fica no repositório. O workflow injeta uma
+    // chave privada via ANDROID_KEYSTORE_BASE64; sem ela o build local usa a
+    // assinatura debug padrão e não deve ser publicado como release.
+    def releaseKeystore = System.getenv('ANDROID_KEYSTORE_PATH')
+    def releaseStorePassword = System.getenv('ANDROID_KEYSTORE_PASSWORD')
+    def releaseKeyAlias = System.getenv('ANDROID_KEY_ALIAS')
+    def releaseKeyPassword = System.getenv('ANDROID_KEY_PASSWORD')
     signingConfigs {
-        debug {
-            storeFile file('imago.keystore')
-            storePassword 'imago123'
-            keyAlias 'imago'
-            keyPassword 'imago123'
-            storeType 'pkcs12'
+        if (releaseKeystore && releaseStorePassword && releaseKeyAlias && releaseKeyPassword) {
+            release {
+                storeFile file(releaseKeystore)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+                storeType 'pkcs12'
+            }
         }
     }
     defaultConfig {
@@ -18,7 +29,7 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode = Integer.parseInt(System.getenv("GITHUB_RUN_NUMBER") ?: "1")
-        versionName "2.0"
+        versionName imagoPackage.version
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -30,6 +41,9 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (releaseKeystore && releaseStorePassword && releaseKeyAlias && releaseKeyPassword) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }
