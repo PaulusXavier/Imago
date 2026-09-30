@@ -9,6 +9,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const PLATFORM_DIRS = { win: 'win', mac: 'mac', linux: 'linux' };
 const target = process.argv[2];
@@ -76,16 +77,20 @@ const leiaMe = `Imago - pasta pronta para distribuir
 
 Esta pasta inteira é o "app" do PC. Para usar:
 
-1. Extraia o ZIP completamente. Não abra o Imago de dentro do ZIP e não
+1. Se o ZIP veio da internet, clique nele com o botão direito > Propriedades,
+   marque Desbloquear (se aparecer) e clique em Aplicar antes de extrair.
+2. Extraia o ZIP completamente. Não abra o Imago de dentro do ZIP e não
    mova o .exe para fora desta pasta.
-2. Coloque a pasta em um local gravável, como Área de Trabalho ou Documentos.
+3. Coloque a pasta em um local gravável, como Área de Trabalho ou Documentos.
    Evite Program Files, pastas somente leitura e pastas sincronizadas enquanto
    estiver configurando pela primeira vez.
-3. Dê duplo clique em "Imago.exe" ou em "Iniciar Imago.bat".
-4. Um QR code aparece na janela preta do Imago. Deixe essa janela aberta
+4. Dê duplo clique em "Imago.exe" ou em "Iniciar Imago.bat".
+5. Um QR code aparece na janela preta do Imago. Deixe essa janela aberta
    durante a apresentação. Não precisa instalar Node.js nem npm.
-5. Se o Windows Defender perguntar sobre a rede, permita o Imago em redes
+6. Se o Windows Defender perguntar sobre a rede, permita o Imago em redes
    privadas para o celular conseguir usar Wi-Fi.
+7. O arquivo "Imago.exe.sha256" permite conferir a integridade do executável
+   com Get-FileHash .\\Imago.exe -Algorithm SHA256 no PowerShell.
 
 Para configurar a apresentação (título/notas/miniaturas dos slides):
 - Mais fácil: arraste o arquivo .pptx em cima do Imago.exe.
@@ -99,14 +104,18 @@ Sem configurar um .pptx, o controle de próximo/anterior ainda funciona quando
 o PowerPoint ou Prezi estiver aberto e em modo apresentação.
 
 Se nada aparecer: extraia novamente o ZIP, confirme que a pasta inteira foi
-mantida junta e abra "Iniciar Imago.bat". Se o Windows mostrar SmartScreen,
-use Mais informações > Executar assim mesmo somente se o ZIP veio da fonte
-que você confia.
+mantida junta e abra "Iniciar Imago.bat". Este executável não possui assinatura
+digital de fornecedor reconhecido. Se o Controle inteligente de aplicativos
+bloquear o Imago sem oferecer "Executar assim mesmo", a solução definitiva é
+usar uma versão assinada com certificado de código confiável; não desative essa
+proteção em um computador que você não administra.
 `;
 
 fs.writeFileSync(path.join(outDir, 'LEIA-ME.txt'), leiaMe, 'utf8');
 
 if (target === 'win') {
+  const exeHash = crypto.createHash('sha256').update(fs.readFileSync(path.join(outDir, 'Imago.exe'))).digest('hex');
+  fs.writeFileSync(path.join(outDir, 'Imago.exe.sha256'), `${exeHash}  Imago.exe\r\n`, 'utf8');
   fs.writeFileSync(
     path.join(outDir, 'Iniciar Imago.bat'),
     '@echo off\r\ncd /d "%~dp0"\r\n"%~dp0Imago.exe"\r\n'
