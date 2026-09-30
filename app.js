@@ -17,6 +17,15 @@ function toast(msg) {
   toastTimer = setTimeout(() => t.classList.add('hidden'), 4500);
 }
 
+// localStorage pode lançar exceção (modo privado, cookies bloqueados, cota cheia).
+// Como é lido logo no início do arquivo, sem proteção o app inteiro deixava de abrir.
+function storageGet(key) {
+  try { return window.localStorage.getItem(key); } catch { return null; }
+}
+function storageSet(key, value) {
+  try { window.localStorage.setItem(key, value); } catch { /* segue sem salvar */ }
+}
+
 const LOCAL_CONNECT_TIMEOUT_MS = 2500;
 const STORAGE_KEY = 'imago-last-connection';
 const MAX_RECONNECT_ATTEMPTS = 6;
@@ -86,7 +95,7 @@ let wakeLock = null;
 let userInitiatedDisconnect = false;
 let reconnectAttempts = 0;
 let lastConnectionParams = null; // { ip, port, code, token }
-let networkMode = localStorage.getItem('imago-network-mode') || 'auto';
+let networkMode = storageGet('imago-network-mode') || 'auto';
 let connectionTransport = null;
 // Codigo de seguranca do Imago atual -- vem do QR/link (?token=...) ou de
 // uma conexao anterior salva. Sem o token certo, o PC recusa a conexao (ver
@@ -96,6 +105,7 @@ let sessionToken = '';
 let isReconnecting = false;
 let activeTab = 'slides';
 let currentSlideIndex = null;
+let currentSlideTotal = null;
 let thumbItems = new Map(); // index -> { wrapper, img }
 let officeState = null;
 let officeSlidesList = [];
@@ -166,11 +176,11 @@ document.addEventListener('visibilitychange', () => {
 
 // ---------- Lembrar a última conexão ----------
 function saveLastConnection(params) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(params));
+  storageSet(STORAGE_KEY, JSON.stringify(params));
 }
 function loadLastConnection() {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+    return JSON.parse(storageGet(STORAGE_KEY) || 'null');
   } catch {
     return null;
   }
@@ -202,6 +212,8 @@ function showConnectScreen() {
   resetThumbsGrid();
   officeState = null;
   officeSlidesList = [];
+  currentSlideIndex = null;
+  currentSlideTotal = null;
   setActiveTab('slides', { silent: true });
 }
 
@@ -248,8 +260,28 @@ function updateTimerDisplay() {
   els.timer.textContent = `${m}:${s}`;
 }
 
+// Cada toque do dedo gerava uma mensagem; pelo relay/BLE isso enfileirava e atrasava o cursor.
+// Aqui os movimentos são somados e enviados no máximo ~60x/s (o modo Bluetooth já fazia isso).
+let moveAcc = { dx: 0, dy: 0 };
+let moveTimer = null;
+function queueMove(payload) {
+  moveAcc.dx += payload.dx;
+  moveAcc.dy += payload.dy;
+  if (moveTimer) return;
+  moveTimer = setTimeout(() => {
+    moveTimer = null;
+    const { dx, dy } = moveAcc;
+    moveAcc = { dx: 0, dy: 0 };
+    if (dx || dy) sendNow({ type: 'move', dx, dy });
+  }, 16);
+}
+
 function send(payload) {
   if (btMode) return btSend(payload);
+  if (payload.type === 'move') { queueMove(payload); return; }
+  sendNow(payload);
+}
+function sendNow(payload) {
   if (webBleMode) { webBleSend(payload).catch(() => {}); return; }
   if (!socket || socket.readyState !== WebSocket.OPEN) {
     if (payload.type === 'command') toast('Sem conexão com o PC. Aguarde a reconexão ou conecte de novo.');
@@ -269,8 +301,9 @@ function updateSlideInfo(msg) {
   els.slideTitle.textContent = msg.title || '';
   els.slideNotes.textContent = msg.notes || '';
   currentSlideIndex = msg.index;
+  currentSlideTotal = msg.total;
   document.getElementById('slide-progress-bar').style.width = msg.total ? (msg.index / msg.total) * 100 + '%' : '0';
-  try { els.notes.value = localStorage.getItem('imago-notes-' + msg.index) || ''; } catch { /* ignora */ }
+  try { els.notes.value = storageGet('imago-notes-' + msg.index) || ''; } catch { /* ignora */ }
   highlightActiveThumb();
   updateNextPreview();
 }
@@ -401,6 +434,7 @@ function wireIncomingMessages(ws) {
 }
 
 function handleIncomingPayload(msg) {
+    if (!msg || typeof msg !== 'object') return;
     if (msg.type === 'slide-info') updateSlideInfo(msg);
     else if (msg.type === 'thumbs-status') handleThumbsStatus(msg);
     else if (msg.type === 'slide-thumb') handleSlideThumb(msg);
@@ -428,6 +462,7 @@ const WEB_BLE_COMMAND_UUID = '19b10001-e8f2-537e-4f6c-d104768a1214';
 const WEB_BLE_EVENT_UUID = '19b10002-e8f2-537e-4f6c-d104768a1214';
 let webBleHelloResolve = null;
 let webBleRxBuffer = '';
+let webBleDecoder = null; // criado sob demanda (so o Web Bluetooth usa)
 
 function setWebBleMessage(text) {
   if (els.webBleMessage) els.webBleMessage.textContent = text;
@@ -441,7 +476,9 @@ async function webBleSend(payload) {
 }
 
 function handleWebBleNotification(event) {
-  webBleRxBuffer += new TextDecoder().decode(event.target.value);
+  // stream:true guarda os bytes soltos de um caractere multibyte (ã, é, ç...) até o próximo pacote.
+  if (!webBleDecoder) webBleDecoder = new TextDecoder();
+  webBleRxBuffer += webBleDecoder.decode(event.target.value, { stream: true });
   const lines = webBleRxBuffer.split('\n');
   webBleRxBuffer = lines.pop() || '';
   for (const line of lines) {
@@ -485,6 +522,7 @@ async function connectWebBluetooth() {
     await events.startNotifications();
     events.addEventListener('characteristicvaluechanged', handleWebBleNotification);
     webBleRxBuffer = '';
+    webBleDecoder = null;
     await new Promise(async (resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('web-ble-auth-timeout')), 6000);
       webBleHelloResolve = () => { clearTimeout(timer); resolve(); };
@@ -501,6 +539,13 @@ async function connectWebBluetooth() {
   } catch (error) {
     webBleMode = false;
     webBleCommand = null;
+    webBleHelloResolve = null;
+    try {
+      // Sem isso o PC continuava com um "celular" conectado que ninguém usava.
+      // O listener sai antes para o aviso de "desconectado" não apagar a mensagem de erro.
+      webBleDevice?.removeEventListener('gattserverdisconnected', handleWebBleDisconnected);
+      webBleDevice?.gatt?.disconnect();
+    } catch { /* já desconectado */ }
     const text = error?.message === 'web-ble-auth-timeout'
       ? 'O PC recusou a autenticação. Abra o QR code novamente e tente escolher o dispositivo certo.'
       : 'Não foi possível conectar. Use Chrome/Android, HTTPS e mantenha o Imago aberto no PC.';
@@ -647,7 +692,7 @@ async function tryConnect({ ip, port, code }) {
 
 function setNetworkMode(mode) {
   networkMode = ['auto', 'wifi', 'internet'].includes(mode) ? mode : 'auto';
-  localStorage.setItem('imago-network-mode', networkMode);
+  storageSet('imago-network-mode', networkMode);
   document.querySelectorAll('[data-network-mode]').forEach((button) => {
     const active = button.dataset.networkMode === networkMode;
     button.classList.toggle('active', active);
@@ -722,14 +767,26 @@ async function attemptAutoReconnect() {
   }
   isReconnecting = true;
   reconnectAttempts++;
+  const params = lastConnectionParams;
+  // O banner também é usado pelo modo Bluetooth com outro texto; restaura o padrão.
+  els.reconnectBanner.textContent = 'Reconectando…';
   els.reconnectBanner.classList.remove('hidden');
   setStatus(false, `Reconectando... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
 
   const delay = Math.min(1000 * reconnectAttempts, 5000);
   await new Promise((r) => setTimeout(r, delay));
+  // Tocou em Desconectar enquanto esperava? Então não reconecta.
+  if (userInitiatedDisconnect) { isReconnecting = false; return; }
 
   try {
-    const ws = await tryConnect(lastConnectionParams);
+    const ws = await tryConnect(params);
+    if (userInitiatedDisconnect) {
+      // Desconectou durante a tentativa: fecha a conexão que acabou de abrir em vez de
+      // deixá-la ativa no PC com a tela de conexão aberta no celular.
+      try { ws.close(); } catch { /* ignora */ }
+      isReconnecting = false;
+      return;
+    }
     socket = ws;
     connectionTransport = ws.url?.startsWith('ws://') ? 'wifi' : 'internet';
     reconnectAttempts = 0;
@@ -752,6 +809,8 @@ async function attemptAutoReconnect() {
 }
 
 function handleDisconnect() {
+  // Sai da aba Laser antes de fechar: senão o laser ficava ligado no PowerPoint.
+  if (activeTab === 'laser') send({ type: 'command', command: 'laser-off' });
   userInitiatedDisconnect = true;
   if (btMode) btLeave();
   if (webBleMode) {
@@ -893,7 +952,7 @@ function officeCmd(cmd, extra) {
 
 function updateNextPreview() {
   const box = $('next-preview');
-  const total = officeState?.ppt?.total;
+  const total = officeState?.ppt?.total || currentSlideTotal;
   if (!total || !currentSlideIndex || currentSlideIndex >= total) {
     box.classList.add('hidden');
     return;
@@ -941,7 +1000,7 @@ function handleOfficeState(msg) {
   const p = msg.ppt;
   if (p) {
     // Cronômetro vem do PC quando a apresentação está rodando
-    if (p.inShow && p.elapsed >= 0) {
+    if (p.inShow && p.elapsed >= 0 && !timerPaused) {
       timerSeconds = p.elapsed;
       updateTimerDisplay();
     }
@@ -1256,7 +1315,7 @@ async function btRefreshDevices() {
       o.textContent = d.name;
       sel.appendChild(o);
     });
-    const last = localStorage.getItem('imago-bt-address');
+    const last = storageGet('imago-bt-address');
     if (last && list.some((d) => d.address === last)) sel.value = last;
     sel.classList.toggle('hidden', list.length < 2);
     btUpdateGuide({ state: btLastState });
@@ -1302,7 +1361,7 @@ async function btStartAndConnect() {
       throw new Error('O Bluetooth demorou para iniciar. Ligue o Bluetooth, aguarde alguns segundos e tente novamente.');
     }
     const address = selectedBtAddress();
-    if (address) localStorage.setItem('imago-bt-address', address);
+    if (address) storageSet('imago-bt-address', address);
     btn.textContent = 'Conectando ao PC…';
     const s = await BtHid.connect({ address });
     btRender(s);
@@ -1334,9 +1393,9 @@ if (isApk) {
   document.getElementById('bt-card').classList.remove('hidden');
   if (!loadLastConnection()?.ip) document.getElementById('wifi-card').open = false;
   const chk = document.getElementById('chk-volume');
-  chk.checked = localStorage.getItem('imago-volume-keys') !== '0';
+  chk.checked = storageGet('imago-volume-keys') !== '0';
   chk.addEventListener('change', () => {
-    localStorage.setItem('imago-volume-keys', chk.checked ? '1' : '0');
+    storageSet('imago-volume-keys', chk.checked ? '1' : '0');
     volumeKeysApply();
   });
   window.addEventListener('imagoVolume', (e) => {
@@ -1369,9 +1428,9 @@ if (isApk) {
     if (document.visibilityState !== 'visible' || !BtHid || !els.controlScreen.classList.contains('hidden')) return;
     try {
       const devices = await btRefreshDevices();
-      const saved = localStorage.getItem('imago-bt-address');
+      const saved = storageGet('imago-bt-address');
       if (!btUserLeft && devices.length === 1 && !saved) {
-        localStorage.setItem('imago-bt-address', devices[0].address);
+        storageSet('imago-bt-address', devices[0].address);
         btMode = true;
         const state = await btConnectSelected();
         if (state?.state !== 'connected') btMode = false;
@@ -1385,7 +1444,7 @@ if (isApk) {
       await BtHid.start();
       await btRefreshDevices();
       btRender(await BtHid.getStatus());
-      if (!btAutoTried && localStorage.getItem('imago-bt-address')) {
+      if (!btAutoTried && storageGet('imago-bt-address')) {
         btAutoTried = true;
         setTimeout(async () => {
           btMode = true;
@@ -1406,28 +1465,29 @@ if (isApk) {
 // ---------- Melhorias v2.1 ----------
 // Notas pessoais por slide (salvas no celular)
 els.notes.addEventListener('input', () => {
-  try { localStorage.setItem('imago-notes-' + (currentSlideIndex || 0), els.notes.value); } catch { /* sem espaço */ }
+  try { storageSet('imago-notes-' + (currentSlideIndex || 0), els.notes.value); } catch { /* sem espaço */ }
 });
 // Tamanho da letra das notas do apresentador
-let notesSize = Number(localStorage.getItem('imago-notes-size')) || 14;
+let notesSize = Number(storageGet('imago-notes-size')) || 14;
 function applyNotesSize(d = 0) {
   notesSize = Math.min(28, Math.max(11, notesSize + d));
   els.slideNotes.style.fontSize = notesSize + 'px';
-  localStorage.setItem('imago-notes-size', String(notesSize));
+  storageSet('imago-notes-size', String(notesSize));
 }
 document.getElementById('btn-notes-minus').addEventListener('click', () => applyNotesSize(-2));
 document.getElementById('btn-notes-plus').addEventListener('click', () => applyNotesSize(2));
 applyNotesSize();
 // Sensibilidade do laser
 const sensEl = document.getElementById('laser-sens');
-laserSens = Number(localStorage.getItem('imago-laser-sens')) || 2.2;
+laserSens = Number(storageGet('imago-laser-sens')) || 2.2;
 sensEl.value = laserSens;
 sensEl.addEventListener('input', () => {
   laserSens = Number(sensEl.value);
-  localStorage.setItem('imago-laser-sens', String(laserSens));
+  storageSet('imago-laser-sens', String(laserSens));
 });
 // Atalhos de teclado (útil ao usar o app no computador/tablet)
 document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (els.controlScreen.classList.contains('hidden') || /^(TEXTAREA|INPUT|SELECT)$/.test(e.target.tagName)) return;
   if (['ArrowRight', 'PageDown', ' '].includes(e.key)) { e.preventDefault(); sendCommand('next'); }
   else if (['ArrowLeft', 'PageUp'].includes(e.key)) { e.preventDefault(); sendCommand('prev'); }
