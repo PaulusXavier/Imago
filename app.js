@@ -622,7 +622,7 @@ async function connectLocal(ip, port) {
       } catch {
         return;
       }
-      if (msg.type === 'hello-ok') settle(resolve, ws);
+      if (msg && msg.type === 'hello-ok') settle(resolve, ws);
     }
     function onClose() {
       settle(reject, new Error('auth-failed'));
@@ -674,6 +674,7 @@ async function connectRelay(code) {
       } catch {
         return; // ignora mensagem invalida em vez de derrubar a conexao
       }
+      if (!msg || typeof msg !== 'object') return;
       if (msg.type === 'joined') {
         // Entrou na sessão pelo código -- ainda falta provar que também
         // tem o codigo de seguranca (token) antes do PC liberar comandos.
