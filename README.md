@@ -29,7 +29,7 @@ No dia a dia: **abra o app → Conectar por Bluetooth → apresente.** Se você 
 
 ### Se você não quiser instalar APK
 
-Abra o site no celular e escolha **Instalar a versão web** ou, no iPhone/iPad, Safari › Compartilhar › **Adicionar à Tela de Início**. Essa versão não tem Bluetooth; use o modo Wi-Fi com o Imago no PC.
+Abra o site no celular e escolha **Instalar a versão web**. No Chrome/Android, essa versão pode usar o Bluetooth web experimental; no iPhone/iPad, use Safari › Compartilhar › **Adicionar à Tela de Início** e conecte por Wi-Fi/internet.
 
 ### Computador
 
@@ -61,7 +61,7 @@ O Imago lembra a última opção escolhida. Para dados móveis, o PC precisa est
 
 1. No celular, abra: `https://github.com/paulusxavier/Imago/releases/download/apk-latest/Imago.apk`, baixe e instale (permita "instalar apps desta fonte" ).
 
-1. Em **Settings › Pages**, aponte para `main` + pasta `/ (root)` (mantém a versão web/PWA funcionando, sem Bluetooth).
+1. Em **Settings › Pages**, aponte para `main` + pasta `/ (root)` (mantém a versão web/PWA funcionando).
 
 A cada novo commit o APK é regerado no mesmo link.
 
@@ -107,7 +107,7 @@ Teclas enviadas: → ← (slides), Home/End, F5, Esc, B, W, Ctrl+L (laser) e nú
 
 - Sem leitura do slide atual/notas/miniaturas no modo Bluetooth (o PC não tem programa para responder).
 
-- Na web/PWA (navegador) o Bluetooth não existe; só o modo Wi-Fi/internet.
+- Na web/PWA, Bluetooth está disponível experimentalmente no Chrome/Android quando o PC anuncia BLE; nos demais navegadores, use Wi-Fi/internet.
 
 - O APK é "debug" com chave fixa incluída no repositório: ótimo para uso pessoal, não serve para a Play Store.
 
