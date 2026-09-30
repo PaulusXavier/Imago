@@ -1,6 +1,6 @@
 {
-  "version": "2.6.0",
-  "notes": "Refinamento visual Office Remote: controles maiores, navegação sticky e melhor leitura no celular.",
+  "version": "2.6.1",
+  "notes": "Relay sem loop de mensagens: detecção de configuração e reconexão com backoff progressivo.",
   "downloads": {
     "win": { "url": "", "sha256": "" },
     "mac": { "url": "", "sha256": "" },
