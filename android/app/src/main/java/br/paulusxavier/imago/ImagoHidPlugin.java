@@ -35,7 +35,10 @@ import java.util.concurrent.Executors;
 @CapacitorPlugin(
     name = "ImagoHid",
     permissions = {
-        @Permission(alias = "bluetooth", strings = { Manifest.permission.BLUETOOTH_CONNECT })
+        @Permission(alias = "bluetooth", strings = {
+            Manifest.permission.BLUETOOTH_CONNECT,
+            Manifest.permission.BLUETOOTH_ADVERTISE
+        })
     }
 )
 public class ImagoHidPlugin extends Plugin {
@@ -84,6 +87,7 @@ public class ImagoHidPlugin extends Plugin {
         @Override
         public void onServiceConnected(int profile, BluetoothProfile proxy) {
             if (profile == BluetoothProfile.HID_DEVICE) {
+                starting = false;
                 hid = (BluetoothHidDevice) proxy;
                 registerApp();
             }
@@ -199,7 +203,7 @@ public class ImagoHidPlugin extends Plugin {
         }
         if (hid == null || !registered) {
             startHid();
-            call.reject("O Bluetooth ainda está iniciando. Tente de novo em 2 segundos.");
+            call.reject("O Bluetooth ainda está iniciando. Aguarde alguns segundos e toque em Conectar novamente.");
             return;
         }
         BluetoothAdapter adapter = adapter();
@@ -223,6 +227,14 @@ public class ImagoHidPlugin extends Plugin {
         if (target == null) {
             call.reject("Nenhum computador pareado. Pareie o celular com o PC nas configurações de Bluetooth.");
             return;
+        }
+        if (host != null && host.getAddress().equals(target.getAddress())) {
+            call.resolve(status());
+            return;
+        }
+        if (host != null) {
+            hid.disconnect(host);
+            host = null;
         }
         boolean ok = hid.connect(target);
         if (!ok) {
@@ -249,8 +261,8 @@ public class ImagoHidPlugin extends Plugin {
             @Override
             public void run() {
                 if (!ready(call)) return;
-                tap(usage, modifiers);
-                call.resolve();
+                if (tap(usage, modifiers)) call.resolve();
+                else call.reject("O relatório Bluetooth não foi enviado. Verifique se o PC ainda está conectado.");
             }
         });
     }
@@ -267,7 +279,10 @@ public class ImagoHidPlugin extends Plugin {
                     if (keys != null) {
                         for (int i = 0; i < keys.length(); i++) {
                             org.json.JSONObject k = keys.getJSONObject(i);
-                            tap(k.optInt("usage", 0), k.optInt("modifiers", 0));
+                            if (!tap(k.optInt("usage", 0), k.optInt("modifiers", 0))) {
+                                call.reject("O relatório Bluetooth não foi enviado. Verifique se o PC ainda está conectado.");
+                                return;
+                            }
                             Thread.sleep(25);
                         }
                     }
@@ -293,7 +308,10 @@ public class ImagoHidPlugin extends Plugin {
                 while (rx != 0 || ry != 0) {
                     int sx = Math.max(-127, Math.min(127, rx));
                     int sy = Math.max(-127, Math.min(127, ry));
-                    send(REPORT_MOUSE, new byte[] { 0, (byte) sx, (byte) sy });
+                    if (!send(REPORT_MOUSE, new byte[] { 0, (byte) sx, (byte) sy })) {
+                        call.reject("O movimento não foi enviado. Verifique se o PC ainda está conectado.");
+                        return;
+                    }
                     rx -= sx;
                     ry -= sy;
                 }
@@ -310,7 +328,10 @@ public class ImagoHidPlugin extends Plugin {
             @Override
             public void run() {
                 if (!ready(call)) return;
-                send(REPORT_MOUSE, new byte[] { (byte) button, 0, 0 });
+                if (!send(REPORT_MOUSE, new byte[] { (byte) button, 0, 0 })) {
+                    call.reject("O clique não foi enviado. Verifique se o PC ainda está conectado.");
+                    return;
+                }
                 try { Thread.sleep(30); } catch (InterruptedException ignored) { }
                 send(REPORT_MOUSE, new byte[] { 0, 0, 0 });
                 call.resolve();
@@ -370,21 +391,22 @@ public class ImagoHidPlugin extends Plugin {
         return true;
     }
 
-    private void tap(int usage, int modifiers) {
-        send(REPORT_KEYBOARD, new byte[] { (byte) modifiers, 0, (byte) usage, 0, 0, 0, 0, 0 });
+    private boolean tap(int usage, int modifiers) {
+        if (!send(REPORT_KEYBOARD, new byte[] { (byte) modifiers, 0, (byte) usage, 0, 0, 0, 0, 0 })) return false;
         try {
             Thread.sleep(12);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
         send(REPORT_KEYBOARD, new byte[8]);
+        return true;
     }
 
     @SuppressLint("MissingPermission")
-    private void send(int reportId, byte[] data) {
+    private boolean send(int reportId, byte[] data) {
         BluetoothHidDevice h = hid;
         BluetoothDevice d = host;
-        if (h != null && d != null) h.sendReport(d, reportId, data);
+        return h != null && d != null && h.sendReport(d, reportId, data);
     }
 
     @SuppressLint("MissingPermission")
