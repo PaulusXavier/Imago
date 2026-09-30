@@ -44,6 +44,10 @@ const els = {
   inputPort: document.getElementById('input-port'),
   inputCode: document.getElementById('input-code'),
   inputToken: document.getElementById('input-token'),
+  networkStatus: document.getElementById('network-status'),
+  webBleCard: document.getElementById('web-ble-card'),
+  webBleButton: document.getElementById('btn-web-ble'),
+  webBleMessage: document.getElementById('web-ble-message'),
   btnConnect: document.getElementById('btn-connect'),
   btnDisconnect: document.getElementById('btn-disconnect'),
   btnPrev: document.getElementById('btn-prev'),
@@ -73,12 +77,17 @@ const els = {
 };
 
 let socket = null;
+let webBleDevice = null;
+let webBleCommand = null;
+let webBleMode = false;
 let timerInterval = null;
 let timerSeconds = 0;
 let wakeLock = null;
 let userInitiatedDisconnect = false;
 let reconnectAttempts = 0;
 let lastConnectionParams = null; // { ip, port, code, token }
+let networkMode = localStorage.getItem('imago-network-mode') || 'auto';
+let connectionTransport = null;
 // Codigo de seguranca do Imago atual -- vem do QR/link (?token=...) ou de
 // uma conexao anterior salva. Sem o token certo, o PC recusa a conexao (ver
 // controller.js): assim, so quem escaneou o QR (ou digitou o codigo que
@@ -170,6 +179,7 @@ function loadLastConnection() {
 function setStatus(connected, text) {
   els.statusDot.classList.toggle('connected', connected);
   els.statusText.textContent = text;
+  document.getElementById('status-bar')?.setAttribute('aria-label', `Status: ${text}`);
 }
 
 function showControlScreen() {
@@ -238,6 +248,7 @@ function updateTimerDisplay() {
 
 function send(payload) {
   if (btMode) return btSend(payload);
+  if (webBleMode) return webBleSend(payload);
   if (!socket || socket.readyState !== WebSocket.OPEN) {
     if (payload.type === 'command') toast('Sem conexão com o PC. Aguarde a reconexão ou conecte de novo.');
     return;
@@ -383,13 +394,17 @@ function wireIncomingMessages(ws) {
     } catch {
       return;
     }
+    handleIncomingPayload(msg);
+  });
+}
+
+function handleIncomingPayload(msg) {
     if (msg.type === 'slide-info') updateSlideInfo(msg);
     else if (msg.type === 'thumbs-status') handleThumbsStatus(msg);
     else if (msg.type === 'slide-thumb') handleSlideThumb(msg);
     else if (msg.type === 'history') renderHistory(msg.sessions || []);
     else if (msg.type === 'office-state') handleOfficeState(msg);
     else if (msg.type === 'office-slides') handleOfficeSlides(msg);
-  });
 }
 
 function wireSocketLifecycle(ws) {
@@ -404,6 +419,95 @@ function wireSocketLifecycle(ws) {
     // Conexao caiu sem o usuario pedir: tenta reconectar automaticamente
     attemptAutoReconnect();
   });
+}
+
+const WEB_BLE_SERVICE_UUID = '19b10000-e8f2-537e-4f6c-d104768a1214';
+const WEB_BLE_COMMAND_UUID = '19b10001-e8f2-537e-4f6c-d104768a1214';
+const WEB_BLE_EVENT_UUID = '19b10002-e8f2-537e-4f6c-d104768a1214';
+let webBleHelloResolve = null;
+let webBleRxBuffer = '';
+
+function setWebBleMessage(text) {
+  if (els.webBleMessage) els.webBleMessage.textContent = text;
+}
+
+async function webBleSend(payload) {
+  if (!webBleCommand) return;
+  const bytes = new TextEncoder().encode(JSON.stringify(payload));
+  if (webBleCommand.writeValueWithResponse) await webBleCommand.writeValueWithResponse(bytes);
+  else await webBleCommand.writeValue(bytes);
+}
+
+function handleWebBleNotification(event) {
+  webBleRxBuffer += new TextDecoder().decode(event.target.value);
+  const lines = webBleRxBuffer.split('\n');
+  webBleRxBuffer = lines.pop() || '';
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    try {
+      const msg = JSON.parse(line);
+      if (msg.type === 'hello-ok') webBleHelloResolve?.();
+      handleIncomingPayload(msg);
+    } catch { /* aguarda a próxima notificação se o pacote estiver incompleto */ }
+  }
+}
+
+function handleWebBleDisconnected() {
+  webBleMode = false;
+  webBleCommand = null;
+  setWebBleMessage('Bluetooth web desconectado. Toque novamente para escolher o PC.');
+  if (!els.controlScreen.classList.contains('hidden')) {
+    setStatus(false, 'Bluetooth web desconectado');
+    showConnectScreen();
+  }
+}
+
+async function connectWebBluetooth() {
+  if (!navigator.bluetooth || !window.isSecureContext) {
+    toast('Bluetooth web exige Chrome/Android e um endereço HTTPS.');
+    return;
+  }
+  els.webBleButton.disabled = true;
+  els.webBleButton.textContent = 'Escolha o Imago no PC…';
+  try {
+    const device = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [WEB_BLE_SERVICE_UUID] }],
+      optionalServices: [WEB_BLE_SERVICE_UUID],
+    });
+    webBleDevice = device;
+    device.addEventListener('gattserverdisconnected', handleWebBleDisconnected);
+    const server = await device.gatt.connect();
+    const service = await server.getPrimaryService(WEB_BLE_SERVICE_UUID);
+    webBleCommand = await service.getCharacteristic(WEB_BLE_COMMAND_UUID);
+    const events = await service.getCharacteristic(WEB_BLE_EVENT_UUID);
+    await events.startNotifications();
+    events.addEventListener('characteristicvaluechanged', handleWebBleNotification);
+    webBleRxBuffer = '';
+    await new Promise(async (resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('web-ble-auth-timeout')), 6000);
+      webBleHelloResolve = () => { clearTimeout(timer); resolve(); };
+      try { await webBleSend({ type: 'hello', token: sessionToken }); }
+      catch (error) { clearTimeout(timer); reject(error); }
+    });
+    webBleHelloResolve = null;
+    webBleMode = true;
+    userInitiatedDisconnect = false;
+    connectionTransport = 'bluetooth-web';
+    setStatus(true, 'Conectado (Bluetooth web)');
+    setWebBleMessage(`Conectado ao ${device.name || 'Imago no PC'}.`);
+    showControlScreen();
+  } catch (error) {
+    webBleMode = false;
+    webBleCommand = null;
+    const text = error?.message === 'web-ble-auth-timeout'
+      ? 'O PC recusou a autenticação. Abra o QR code novamente e tente escolher o dispositivo certo.'
+      : 'Não foi possível conectar. Use Chrome/Android, HTTPS e mantenha o Imago aberto no PC.';
+    setWebBleMessage(text);
+    toast(text);
+  } finally {
+    els.webBleButton.disabled = false;
+    els.webBleButton.textContent = 'Conectar Bluetooth web';
+  }
 }
 
 // Conecta e faz o "handshake" de autenticação: manda {type:'hello', token}
@@ -523,17 +627,34 @@ async function connectRelay(code) {
 }
 
 async function tryConnect({ ip, port, code }) {
-  if (ip) {
+  if (networkMode !== 'internet' && ip) {
     try {
       return await connectLocal(ip, port || '8765');
     } catch {
-      /* cai para o relay */
+      if (networkMode === 'wifi') throw new Error('wifi-failed');
+      /* no modo automático, cai para o relay */
     }
   }
-  if (code) {
+  if (networkMode !== 'wifi' && code) {
     return await connectRelay(code);
   }
-  throw new Error('sem-dados-de-conexao');
+  throw new Error(networkMode === 'wifi' ? 'wifi-data-missing' : 'internet-data-missing');
+}
+
+function setNetworkMode(mode) {
+  networkMode = ['auto', 'wifi', 'internet'].includes(mode) ? mode : 'auto';
+  localStorage.setItem('imago-network-mode', networkMode);
+  document.querySelectorAll('[data-network-mode]').forEach((button) => {
+    const active = button.dataset.networkMode === networkMode;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+  const descriptions = {
+    auto: 'Automático: tenta Wi-Fi primeiro e usa a internet como reserva.',
+    wifi: 'Wi-Fi: conexão direta, mais rápida e funciona sem internet.',
+    internet: 'Dados móveis: usa o relay; deixe o código de 6 dígitos preenchido.',
+  };
+  if (els.networkStatus) els.networkStatus.textContent = descriptions[networkMode];
 }
 
 async function handleConnect() {
@@ -554,13 +675,14 @@ async function handleConnect() {
   try {
     const ws = await tryConnect(params);
     socket = ws;
+    connectionTransport = ws.url?.startsWith('ws://') ? 'wifi' : 'internet';
     userInitiatedDisconnect = false;
     reconnectAttempts = 0;
     lastConnectionParams = params;
     saveLastConnection(params);
     wireSocketLifecycle(ws);
     wireIncomingMessages(ws);
-    setStatus(true, ws.url?.startsWith('ws://') ? 'Conectado (rede local)' : 'Conectado (internet)');
+    setStatus(true, connectionTransport === 'wifi' ? 'Conectado (Wi-Fi local)' : 'Conectado (dados móveis/internet)');
     showControlScreen();
   } catch (err) {
     setStatus(false, 'Falha ao conectar');
@@ -570,6 +692,12 @@ async function handleConnect() {
       toast('O relay (internet) ainda não foi configurado neste app: falta trocar RELAY_URL no app.js. Use o IP da rede local ou o modo Bluetooth.');
     } else if (err.message === 'relay-timeout') {
       toast('O relay demorou demais para responder. Se ele estiver no plano gratuito do Render, pode estar acordando: tente de novo em 1 minuto.');
+    } else if (err.message === 'wifi-failed') {
+      toast('Não encontrei o PC no Wi-Fi. Confira se celular e PC estão na mesma rede ou escolha Dados móveis.');
+    } else if (err.message === 'wifi-data-missing') {
+      toast('Para usar Wi-Fi, informe o IP local e a porta do PC.');
+    } else if (err.message === 'internet-data-missing') {
+      toast('Para usar dados móveis, informe o código de 6 dígitos do relay.');
     } else {
       toast('Não foi possível conectar: informe o IP local ou o código do relay.');
     }
@@ -597,11 +725,12 @@ async function attemptAutoReconnect() {
   try {
     const ws = await tryConnect(lastConnectionParams);
     socket = ws;
+    connectionTransport = ws.url?.startsWith('ws://') ? 'wifi' : 'internet';
     reconnectAttempts = 0;
     wireSocketLifecycle(ws);
     wireIncomingMessages(ws);
     els.reconnectBanner.classList.add('hidden');
-    setStatus(true, 'Reconectado');
+    setStatus(true, connectionTransport === 'wifi' ? 'Reconectado (Wi-Fi local)' : 'Reconectado (dados móveis/internet)');
     isReconnecting = false;
   } catch {
     isReconnecting = false;
@@ -612,6 +741,11 @@ async function attemptAutoReconnect() {
 function handleDisconnect() {
   userInitiatedDisconnect = true;
   if (btMode) btLeave();
+  if (webBleMode) {
+    webBleMode = false;
+    webBleCommand = null;
+    try { webBleDevice?.gatt?.disconnect(); } catch { /* já desconectado */ }
+  }
   socket?.close();
   socket = null;
   lastConnectionParams = null;
@@ -633,6 +767,7 @@ function setActiveTab(name, { silent } = {}) {
   activeTab = name;
   Object.entries(TABS).forEach(([key, refs]) => {
     els[refs.tab].classList.toggle('active', key === name);
+    els[refs.tab].setAttribute('aria-selected', key === name ? 'true' : 'false');
     els[refs.panel].classList.toggle('hidden', key !== name);
   });
 
@@ -945,6 +1080,8 @@ let btRetryTimer = null;
 let btLastState = 'starting';
 let btAutoTried = false;
 let btUserLeft = false;
+let btConnectionInFlight = false;
+let btRetryDelay = 2500;
 let btMoveAcc = { dx: 0, dy: 0 };
 let btMoveTimer = null;
 
@@ -1005,17 +1142,34 @@ function btRender(state) {
   btLastState = state.state;
   const msg = document.getElementById('bt-message');
   if (msg) msg.textContent = state.message || '';
+  btUpdateGuide(state);
   const connected = state.state === 'connected';
   if (btMode) {
     setStatus(connected, connected ? `Bluetooth: ${state.hostName || 'PC'}` : 'Bluetooth desconectado');
     els.reconnectBanner.textContent = 'Bluetooth caiu — reconectando…';
     els.reconnectBanner.classList.toggle('hidden', connected);
     if (!connected) btScheduleRetry();
-    else clearTimeout(btRetryTimer);
+    else {
+      btRetryDelay = 2500;
+      clearTimeout(btRetryTimer);
+      btRetryTimer = null;
+    }
   } else if (connected && !btUserLeft && els.controlScreen.classList.contains('hidden')) {
     // O Windows conectou sozinho (já pareado): entra direto no controle.
     btEnter(state);
   }
+}
+
+function btUpdateGuide(state = {}) {
+  const sel = document.getElementById('bt-device');
+  const hasPaired = !!sel?.options.length;
+  const connected = state.state === 'connected' || btLastState === 'connected';
+  const current = connected ? 3 : hasPaired ? 2 : 1;
+  document.querySelectorAll('[data-bt-step]').forEach((step) => {
+    const number = Number(step.dataset.btStep);
+    step.classList.toggle('active', number === current);
+    step.classList.toggle('done', number < current);
+  });
 }
 
 function btEnter(state) {
@@ -1035,12 +1189,30 @@ function btLeave() {
 }
 
 function btScheduleRetry() {
+  if (btRetryTimer || btConnectionInFlight || !btMode) return;
   clearTimeout(btRetryTimer);
-  btRetryTimer = setTimeout(() => {
-    if (!btMode) return;
-    BtHid.connect({ address: selectedBtAddress() }).catch(() => {});
-    btScheduleRetry();
-  }, 3000);
+  btRetryTimer = setTimeout(async () => {
+    btRetryTimer = null;
+    await btConnectSelected();
+  }, btRetryDelay);
+  btRetryDelay = Math.min(12000, Math.round(btRetryDelay * 1.6));
+}
+
+async function btConnectSelected() {
+  if (!BtHid || btConnectionInFlight || !btMode) return null;
+  btConnectionInFlight = true;
+  try {
+    const state = await BtHid.connect({ address: selectedBtAddress() });
+    btRender(state);
+    return state;
+  } catch (err) {
+    const msg = document.getElementById('bt-message');
+    if (msg && btMode) msg.textContent = err?.message || 'Tentativa de reconexão Bluetooth falhou.';
+    return null;
+  } finally {
+    btConnectionInFlight = false;
+    if (btMode && btLastState !== 'connected') btScheduleRetry();
+  }
 }
 
 function selectedBtAddress() {
@@ -1066,24 +1238,51 @@ async function btRefreshDevices() {
     const last = localStorage.getItem('imago-bt-address');
     if (last && list.some((d) => d.address === last)) sel.value = last;
     sel.classList.toggle('hidden', list.length < 2);
-  } catch { /* sem permissão ainda */ }
+    btUpdateGuide({ state: btLastState });
+    const msg = document.getElementById('bt-message');
+    if (msg && !list.length) msg.textContent = 'Nenhum aparelho pareado. Pareie o PC nas configurações do Android e atualize a lista.';
+    return list;
+  } catch (err) {
+    const msg = document.getElementById('bt-message');
+    if (msg) msg.textContent = err?.message || 'Não foi possível listar os aparelhos pareados.';
+    return [];
+  }
 }
 
 async function btStartAndConnect() {
   btUserLeft = false;
   const btn = document.getElementById('btn-bt-connect');
   btn.disabled = true;
+  const originalLabel = btn.textContent;
+  btn.textContent = 'Preparando Bluetooth…';
   try {
     await BtHid.start();
-    await btRefreshDevices();
-    // dá um instante para o serviço HID registrar
-    for (let i = 0; i < 8; i++) {
-      const s = await BtHid.getStatus();
-      if (s.state === 'ready' || s.state === 'connected') break;
-      await new Promise((r) => setTimeout(r, 400));
+    const devices = await btRefreshDevices();
+    if (!devices.length) {
+      const msg = document.getElementById('bt-message');
+      if (msg) msg.textContent = 'Nenhum PC pareado. Abrindo as configurações Bluetooth…';
+      toast('Pareie o celular com o PC e volte ao Imago.');
+      await BtHid.openBluetoothSettings();
+      return;
+    }
+    // Alguns aparelhos levam vários segundos para registrar o perfil HID,
+    // especialmente logo após ligar o Bluetooth. Espera até 10s em vez de
+    // falhar cedo e obrigar o apresentador a tocar várias vezes.
+    let readyState = null;
+    for (let i = 0; i < 20; i++) {
+      readyState = await BtHid.getStatus();
+      btRender(readyState);
+      if (readyState.state === 'ready' || readyState.state === 'connected') break;
+      if (['off', 'no-permission', 'unsupported'].includes(readyState.state)) throw new Error(readyState.message);
+      btn.textContent = `Preparando Bluetooth… ${Math.min(99, Math.round(((i + 1) / 20) * 100))}%`;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    if (!readyState || !['ready', 'connected'].includes(readyState.state)) {
+      throw new Error('O Bluetooth demorou para iniciar. Ligue o Bluetooth, aguarde alguns segundos e tente novamente.');
     }
     const address = selectedBtAddress();
     if (address) localStorage.setItem('imago-bt-address', address);
+    btn.textContent = 'Conectando ao PC…';
     const s = await BtHid.connect({ address });
     btRender(s);
     if (s.state === 'connected') btEnter(s);
@@ -1092,9 +1291,12 @@ async function btStartAndConnect() {
       document.getElementById('bt-message').textContent = 'Conectando… se demorar, confirme o pareamento no Windows.';
     }
   } catch (err) {
-    document.getElementById('bt-message').textContent = err?.message || 'Não foi possível conectar por Bluetooth.';
+    const message = err?.message || 'Não foi possível conectar por Bluetooth.';
+    document.getElementById('bt-message').textContent = message;
+    toast(message);
   } finally {
     btn.disabled = false;
+    btn.textContent = originalLabel;
   }
 }
 
@@ -1121,11 +1323,41 @@ if (isApk) {
     sendCommand(dir === 'up' ? 'prev' : 'next');
   });
   document.getElementById('btn-bt-connect').addEventListener('click', btStartAndConnect);
+  document.getElementById('btn-bt-refresh').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-bt-refresh');
+    btn.disabled = true;
+    await btRefreshDevices();
+    btn.disabled = false;
+  });
+  els.reconnectBanner.addEventListener('click', () => {
+    if (!btMode || btLastState === 'connected') return;
+    clearTimeout(btRetryTimer);
+    btRetryTimer = null;
+    btRetryDelay = 0;
+    btScheduleRetry();
+  });
   document.getElementById('btn-bt-pair').addEventListener('click', async () => {
     try { await BtHid.start(); } catch { /* segue mesmo assim */ }
     BtHid.openBluetoothSettings().catch(() => {});
   });
   BtHid.addListener('state', (s) => btRender(s));
+  // Ao voltar das configurações do Android, atualiza a lista. Se acabou de
+  // parear um único PC, guarda o endereço e tenta conectar sem exigir outro
+  // passo do usuário.
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState !== 'visible' || !BtHid || !els.controlScreen.classList.contains('hidden')) return;
+    try {
+      const devices = await btRefreshDevices();
+      const saved = localStorage.getItem('imago-bt-address');
+      if (!btUserLeft && devices.length === 1 && !saved) {
+        localStorage.setItem('imago-bt-address', devices[0].address);
+        btMode = true;
+        const state = await btConnectSelected();
+        if (state?.state !== 'connected') btMode = false;
+      }
+      btRender(await BtHid.getStatus());
+    } catch { /* o Android ainda pode estar retomando o Bluetooth */ }
+  });
   // Ao abrir o app: registra o teclado Bluetooth e tenta reconectar ao último PC.
   (async () => {
     try {
@@ -1134,7 +1366,11 @@ if (isApk) {
       btRender(await BtHid.getStatus());
       if (!btAutoTried && localStorage.getItem('imago-bt-address')) {
         btAutoTried = true;
-        setTimeout(() => BtHid.connect({ address: selectedBtAddress() }).catch(() => {}), 1200);
+        setTimeout(async () => {
+          btMode = true;
+          await btConnectSelected();
+          if (btLastState !== 'connected') btMode = false;
+        }, 1200);
       }
     } catch (err) {
       const m = document.getElementById('bt-message');
@@ -1251,12 +1487,19 @@ function validateConnectForm() {
   const ip = els.inputIp.value.trim();
   const port = els.inputPort.value.trim();
   const code = els.inputCode.value.trim();
-  if (!ip && !code) return ['Informe o IP do PC ou cole o link do QR code.', [els.inputIp]];
+  if (networkMode === 'wifi' && !ip) return ['No modo Wi-Fi, informe o IP local do PC.', [els.inputIp]];
+  if (networkMode === 'internet' && !code) return ['No modo dados móveis, informe o código de 6 dígitos.', [els.inputCode]];
+  if (networkMode === 'auto' && !ip && !code) return ['Informe o IP do PC ou cole o link do QR code.', [els.inputIp]];
   if (ip && !/^[\w.\-]+$/.test(ip)) return ['O IP parece inválido. Exemplo: 192.168.0.10', [els.inputIp]];
-  if (port && !/^\d{2,5}$/.test(port)) return ['A porta deve ter só números. Exemplo: 8765', [els.inputPort]];
+  if (port && (!/^\d{2,5}$/.test(port) || Number(port) < 1 || Number(port) > 65535)) return ['A porta deve estar entre 1 e 65535. Exemplo: 8765', [els.inputPort]];
+  if (networkMode !== 'wifi' && code && !/^\d{6}$/.test(code)) return ['O código do relay deve ter 6 dígitos.', [els.inputCode]];
   if (!els.inputToken.value.trim() && !sessionToken) return ['Digite o código de segurança que aparece na tela do PC.', [els.inputToken]];
   return null;
 }
+[...document.querySelectorAll('[data-network-mode]')].forEach((button) => {
+  button.addEventListener('click', () => setNetworkMode(button.dataset.networkMode));
+});
+setNetworkMode(networkMode);
 [els.inputIp, els.inputPort, els.inputToken, els.inputCode].forEach((f) => f.addEventListener('input', () => showFormError('')));
 els.inputToken.addEventListener('input', () => { els.inputToken.value = els.inputToken.value.toUpperCase().replace(/\s/g, ''); });
 document.querySelectorAll('#wifi-card input').forEach((f) => f.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleConnect(); }));
@@ -1274,6 +1517,12 @@ document.getElementById('input-link').addEventListener('input', (e) => {
   } catch { /* ainda não é um link completo */ }
 });
 if (isApk) document.getElementById('net-divider').classList.remove('hidden');
+if (!isApk) {
+  els.webBleCard?.classList.remove('hidden');
+  els.webBleButton?.addEventListener('click', connectWebBluetooth);
+  if (!navigator.bluetooth) setWebBleMessage('Este navegador não oferece Web Bluetooth. Use Chrome no Android.');
+  else if (!window.isSecureContext) setWebBleMessage('Abra o Imago por HTTPS para liberar Bluetooth web.');
+}
 
 prefillFromUrl();
 prefillFromStorage();
@@ -1290,3 +1539,18 @@ prefillFromStorage();
 if ('serviceWorker' in navigator && !isApk) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
+
+// Se a conexão cair por uma troca de rede, tenta retomar assim que o aparelho
+// voltar a ficar online, sem exigir que o apresentador refaça o pareamento.
+window.addEventListener('offline', () => {
+  if (!els.controlScreen.classList.contains('hidden')) {
+    setStatus(false, 'Sem internet — aguardando a rede');
+    toast('A rede caiu. O Imago tentará reconectar automaticamente.');
+  }
+});
+window.addEventListener('online', () => {
+  if (!els.controlScreen.classList.contains('hidden') && socket?.readyState !== WebSocket.OPEN) {
+    toast('Rede disponível. Tentando reconectar…');
+    attemptAutoReconnect();
+  }
+});
