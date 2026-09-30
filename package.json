@@ -1,6 +1,6 @@
 {
   "name": "imago",
-  "version": "2.6.1",
+  "version": "2.7.0",
   "private": true,
   "description": "Imago - controle remoto de apresentacoes (Bluetooth + Wi-Fi): app Android, app web, programa do PC e relay",
   "main": "controller.js",
@@ -9,7 +9,7 @@
     "start": "node controller.js",
     "configurar": "node controller.js --configurar",
     "relay": "node relay-server.js",
-    "test": "node logic_test.js",
+    "test": "node logic_test.js && node modules_test.js",
     "prepare:web": "node -e \"const fs=require('fs');fs.mkdirSync('www',{recursive:true});for(const f of ['index.html','app.js','sw.js','manifest.json','version.json','icon.svg','capacitor.js','icon-192.png','icon-512.png','icon-maskable-512.png','apple-touch-icon.png'])fs.copyFileSync(f,'www/'+f)\"",
     "sync": "npm run prepare:web && cap sync android",
     "build:win": "pkg . --targets node18-win-x64 --output dist/win/Imago.exe",
@@ -40,7 +40,17 @@
     ],
     "assets": [
       "office-bridge.ps1",
-      "input-bridge.ps1"
+      "input-bridge.ps1",
+      "index.html",
+      "app.js",
+      "capacitor.js",
+      "manifest.json",
+      "version.json",
+      "icon.svg",
+      "icon-192.png",
+      "icon-512.png",
+      "icon-maskable-512.png",
+      "apple-touch-icon.png"
     ]
   },
   "engines": {
