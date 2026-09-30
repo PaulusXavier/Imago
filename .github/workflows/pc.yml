@@ -29,25 +29,60 @@ jobs:
       - name: Instalar dependências
         run: npm ci --ignore-scripts --no-audit --no-fund
 
+      - name: Auditar dependências de produção
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Gerar o Imago.exe
         run: npm run build:win
 
       - name: Validar pasta do PC
         shell: powershell
         run: |
-          $required = @('Imago.exe', 'Configurar.bat', 'Iniciar Imago.bat', 'LEIA-ME.txt', 'input-bridge.ps1', 'office-bridge.ps1')
+          $required = @('Imago.exe', 'Imago.exe.sha256', 'Configurar.bat', 'Iniciar Imago.bat', 'LEIA-ME.txt', 'input-bridge.ps1', 'office-bridge.ps1')
           foreach ($file in $required) {
             if (-not (Test-Path (Join-Path 'dist/win' $file))) { throw "Arquivo obrigatório ausente: $file" }
           }
           if (-not (Test-Path 'dist/win/node_modules/robotjs')) { throw 'Pasta robotjs ausente' }
 
+      - name: Assinar Imago.exe (quando o certificado estiver configurado)
+        if: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != '' }}
+        shell: powershell
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP 'imago-signing.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64))
+          $sdkBin = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\bin'
+          $signtool = Get-ChildItem $sdkBin -Filter signtool.exe -Recurse | Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } | Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $signtool) { throw 'signtool.exe não encontrado no runner Windows' }
+          & $signtool.FullName sign /fd SHA256 /f $pfx /p $env:WINDOWS_CERTIFICATE_PASSWORD /tr http://timestamp.digicert.com /td SHA256 dist/win/Imago.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Falha ao assinar Imago.exe' }
+          $signature = Get-AuthenticodeSignature dist/win/Imago.exe
+          if ($signature.Status -ne 'Valid') { throw "Assinatura inválida: $($signature.Status)" }
+          Remove-Item $pfx -Force
+
+      - name: Registrar integridade do executável
+        shell: powershell
+        run: |
+          $hash = (Get-FileHash dist/win/Imago.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  Imago.exe" | Out-File dist/win/Imago.exe.sha256 -Encoding ascii
+
       - name: Compactar a pasta do PC
         run: Compress-Archive -Path dist/win/* -DestinationPath Imago-PC-Windows.zip
+
+      - name: Gerar checksum do ZIP
+        shell: powershell
+        run: |
+          $hash = (Get-FileHash Imago-PC-Windows.zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  Imago-PC-Windows.zip" | Out-File Imago-PC-Windows.zip.sha256 -Encoding ascii
 
       - uses: actions/upload-artifact@v4
         with:
           name: Imago-PC-Windows
-          path: Imago-PC-Windows.zip
+          path: |
+            Imago-PC-Windows.zip
+            Imago-PC-Windows.zip.sha256
 
       # Link fixo: https://github.com/<usuario>/<repo>/releases/download/pc-latest/Imago-PC-Windows.zip
       - name: Publicar na Release pc-latest
@@ -56,4 +91,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete pc-latest --cleanup-tag -y || true
-          gh release create pc-latest Imago-PC-Windows.zip --title "Imago para Windows (PC)" --notes "Programa do PC gerado automaticamente. Extraia o zip e abra o Imago.exe."
+          gh release create pc-latest Imago-PC-Windows.zip Imago-PC-Windows.zip.sha256 --title "Imago para Windows (PC)" --notes "Programa do PC gerado automaticamente. Extraia o ZIP, verifique o SHA-256 e abra o Imago.exe."
