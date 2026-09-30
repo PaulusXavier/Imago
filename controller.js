@@ -230,7 +230,7 @@ function broadcastSlideInfo() {
   if (usingOffice()) {
     const p = officeState.ppt;
     if (p.total < 1) return;
-    broadcast({ type: 'slide-info', index: p.current, total: p.total, title: p.title, notes: p.notes });
+    broadcast({ type: 'slide-info', index: p.current, total: p.total, title: p.title, notes: p.notes, name: p.name || '' });
     return;
   }
   if (!slidesData.length || currentSlide < 1) return;
@@ -241,6 +241,7 @@ function broadcastSlideInfo() {
     total: slidesData.length,
     title: info.title,
     notes: info.notes,
+    name: PPTX_PATH ? path.basename(PPTX_PATH) : '',
   });
 }
 
