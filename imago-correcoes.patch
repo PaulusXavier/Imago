@@ -1,0 +1,1333 @@
+diff -ruN a/Imago-main/.github/workflows/apk.yml b/Imago-main/.github/workflows/apk.yml
+--- a/Imago-main/.github/workflows/apk.yml	2026-09-30 01:33:18.000000000 +0000
++++ b/Imago-main/.github/workflows/apk.yml	2026-09-30 01:43:34.000000000 +0000
+@@ -67,4 +67,6 @@
+           GH_TOKEN: ${{ github.token }}
+         run: |
+           gh release delete apk-latest --cleanup-tag -y || true
+-          gh release create apk-latest Imago.apk --title "Imago (APK Android)" --notes "APK gerado automaticamente. Baixe o Imago.apk no celular e instale."
++          gh release create apk-latest Imago.apk \
++            --title "Imago (APK Android)" \
++            --notes "APK gerado automaticamente a partir do commit ${GITHUB_SHA::7}. Baixe o Imago.apk no celular e instale."
+diff -ruN a/Imago-main/.github/workflows/pc.yml b/Imago-main/.github/workflows/pc.yml
+--- a/Imago-main/.github/workflows/pc.yml	2026-09-30 01:33:18.000000000 +0000
++++ b/Imago-main/.github/workflows/pc.yml	2026-09-30 01:43:34.000000000 +0000
+@@ -16,6 +16,11 @@
+   pc:
+     runs-on: windows-latest
+     timeout-minutes: 30
++    env:
++      # O contexto "secrets" NAO pode ser usado em "if:" de um step (o GitHub
++      # rejeita o workflow inteiro). Por isso o resultado vai para uma variavel
++      # de ambiente do job, que o "if:" do passo de assinatura consulta.
++      HAS_SIGNING_CERT: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != '' }}
+     steps:
+       - uses: actions/checkout@v4
+ 
+@@ -29,6 +34,10 @@
+       - name: Instalar dependências
+         run: npm ci --ignore-scripts --no-audit --no-fund
+ 
++      # Falha cedo se a lógica de segurança/atualização quebrar (como no apk.yml).
++      - name: Rodar os testes
++        run: npm test
++
+       - name: Auditar dependências de produção
+         run: npm audit --omit=dev --audit-level=high
+ 
+@@ -45,7 +54,7 @@
+           if (-not (Test-Path 'dist/win/node_modules/robotjs')) { throw 'Pasta robotjs ausente' }
+ 
+       - name: Assinar Imago.exe (quando o certificado estiver configurado)
+-        if: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != '' }}
++        if: ${{ env.HAS_SIGNING_CERT == 'true' }}
+         shell: powershell
+         env:
+           WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+diff -ruN a/Imago-main/README.md b/Imago-main/README.md
+--- a/Imago-main/README.md	2026-09-30 01:33:18.000000000 +0000
++++ b/Imago-main/README.md	2026-09-30 01:48:38.000000000 +0000
+@@ -89,6 +89,21 @@
+ - **GitHub Actions:** o `pc.yml` tinha `secrets` dentro de `if:` (o GitHub rejeita o workflow inteiro); corrigido. Os dois workflows rodam `npm test`, e o `apk.yml` solto na raiz foi removido (a versão certa fica em `.github/workflows/`).
+ - Assistente de configuração encontra `.pptx` em pastas dentro do OneDrive; `versionName` do APK vem do `package.json`; backup automático do Android desligado (o app guarda o código de segurança).
+ 
++### Correções da revisão de código (sobre a 2.7)
++
++- **Web Bluetooth:** títulos e notas com acento (ã, é, ç…) chegavam corrompidos (`��`) quando o texto era dividido em pacotes de 20 bytes; agora o texto é remontado corretamente. Se a autenticação falha, a conexão Bluetooth também é encerrada (antes ficava aberta no PC).
++- **App abre mesmo com o armazenamento do navegador bloqueado** (modo privado / cookies bloqueados): antes uma exceção no `localStorage` derrubava a tela inteira.
++- **Reconexão:** tocar em *Desconectar* durante uma tentativa de reconexão não deixa mais uma conexão "fantasma" ativa no PC. O aviso de reconexão volta ao texto normal depois de usar o Bluetooth.
++- **Laser:** desconectar com a aba *Laser* aberta desliga o laser (antes ficava preso no PowerPoint).
++- **Touchpad:** os movimentos são somados e enviados ~60 vezes por segundo também por Wi-Fi, internet e Web Bluetooth (o cursor deixa de atrasar pelo relay).
++- **Cronômetro pausado** não é mais sobrescrito pelo tempo do PowerPoint; atalhos com Ctrl/Alt (ex.: Alt+← do navegador) não trocam mais de slide; a prévia do próximo slide também aparece fora do modo Office.
++- **PC:** o histórico da apresentação em andamento é salvo em qualquer forma de encerramento (SIGTERM/SIGHUP/fechar a janela; antes só no Ctrl+C); *Iniciar deste slide* não zera mais o contador; o código de segurança é sorteado de forma uniforme.
++- **Miniaturas (macOS/Linux):** o LibreOffice roda com perfil próprio (não conflita com um LibreOffice já aberto), tem limite de tempo (3 min) e o aviso final não é mais duplicado.
++- **Atualização automática:** um download cortado no meio agora falha com mensagem em vez de travar; o `chmod` só mexe no executável `Imago`.
++- **Relay:** o celular não consegue mais se passar pelo próprio relay (mensagens como `phone-disconnected`/`session-created` enviadas por ele são descartadas).
++- **Android:** campos compartilhados entre threads do `ImagoHidPlugin` agora são `volatile`.
++- **Testes:** `logic_test.js` passou a testar o código real do atualizador (antes testava cópias); novos testes de integração do relay e do controller. Comentários desatualizados (`updater.js`, `office.js`, "4 dígitos") corrigidos.
++
+ ## Novidades da versão 2.x
+ 
+ - **Toque no touchpad = clique do mouse** (Prezi, vídeos, links).
+@@ -136,7 +151,7 @@
+ 
+ - `relay-server.js` — servidor relay (modo internet)
+ 
+-- `logic_test.js` e `modules_test.js` — testes da lógica de segurança/atualização e do código real de leitura do `.pptx` e escolha do IP (`npm test`)
++- `logic_test.js`, `modules_test.js`, `relay_test.js` e `controller_test.js` — testes (`npm test`): segurança/atualização (código real do `modules.js`), leitura do `.pptx`, escolha do IP, o relay de verdade e o programa do PC de verdade (com um `robotjs` de mentira)
+ 
+ - `package.json` — um só para tudo (app Android, PC e relay)
+ 
+diff -ruN a/Imago-main/android/app/build.gradle b/Imago-main/android/app/build.gradle
+--- a/Imago-main/android/app/build.gradle	2026-09-30 01:33:18.000000000 +0000
++++ b/Imago-main/android/app/build.gradle	2026-09-30 01:43:34.000000000 +0000
+@@ -1,5 +1,8 @@
+ apply plugin: 'com.android.application'
+ 
++// A versao exibida do APK acompanha a do package.json (antes ficava fixa em "2.0").
++def imagoPackage = new groovy.json.JsonSlurper().parse(file('../../package.json'))
++
+ android {
+     namespace = "br.paulusxavier.imago"
+     compileSdk = rootProject.ext.compileSdkVersion
+@@ -18,7 +21,7 @@
+         minSdkVersion rootProject.ext.minSdkVersion
+         targetSdkVersion rootProject.ext.targetSdkVersion
+         versionCode = Integer.parseInt(System.getenv("GITHUB_RUN_NUMBER") ?: "1")
+-        versionName "2.0"
++        versionName imagoPackage.version
+         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+         aaptOptions {
+              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+diff -ruN a/Imago-main/android/app/src/main/AndroidManifest.xml b/Imago-main/android/app/src/main/AndroidManifest.xml
+--- a/Imago-main/android/app/src/main/AndroidManifest.xml	2026-09-30 01:33:18.000000000 +0000
++++ b/Imago-main/android/app/src/main/AndroidManifest.xml	2026-09-30 01:43:34.000000000 +0000
+@@ -2,7 +2,7 @@
+ <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+ 
+     <application
+-        android:allowBackup="true"
++        android:allowBackup="false"
+         android:usesCleartextTraffic="true"
+         android:icon="@mipmap/ic_launcher"
+         android:label="@string/app_name"
+diff -ruN a/Imago-main/android/app/src/main/java/br/paulusxavier/imago/ImagoHidPlugin.java b/Imago-main/android/app/src/main/java/br/paulusxavier/imago/ImagoHidPlugin.java
+--- a/Imago-main/android/app/src/main/java/br/paulusxavier/imago/ImagoHidPlugin.java	2026-09-30 01:33:18.000000000 +0000
++++ b/Imago-main/android/app/src/main/java/br/paulusxavier/imago/ImagoHidPlugin.java	2026-09-30 01:44:36.000000000 +0000
+@@ -78,10 +78,12 @@
+ 
+     private final ExecutorService sender = Executors.newSingleThreadExecutor();
+     private final ExecutorService callbackExecutor = Executors.newSingleThreadExecutor();
+-    private BluetoothHidDevice hid;
+-    private BluetoothDevice host;
+-    private boolean registered = false;
+-    private boolean starting = false;
++    // Lidos/escritos por threads diferentes (thread principal, callbackExecutor e sender):
++    // sem "volatile" uma thread podia continuar vendo um valor antigo (ex.: host ja desconectado).
++    private volatile BluetoothHidDevice hid;
++    private volatile BluetoothDevice host;
++    private volatile boolean registered = false;
++    private volatile boolean starting = false;
+ 
+     private final BluetoothProfile.ServiceListener profileListener = new BluetoothProfile.ServiceListener() {
+         @Override
+diff -ruN a/Imago-main/apk.yml b/Imago-main/apk.yml
+--- a/Imago-main/apk.yml	2026-09-30 01:33:18.000000000 +0000
++++ b/Imago-main/apk.yml	1970-01-01 00:00:00.000000000 +0000
+@@ -1,72 +0,0 @@
+-name: Gerar APK do Imago
+-
+-on:
+-  push:
+-    branches: [main]
+-  workflow_dispatch:
+-
+-permissions:
+-  contents: write
+-
+-concurrency:
+-  group: apk
+-  cancel-in-progress: true
+-
+-jobs:
+-  apk:
+-    runs-on: ubuntu-latest
+-    timeout-minutes: 30
+-    steps:
+-      - uses: actions/checkout@v4
+-
+-      - uses: actions/setup-java@v4
+-        with:
+-          distribution: temurin
+-          java-version: '21'
+-
+-      # O runner ubuntu-latest já traz o Android SDK (ANDROID_HOME). O passo
+-      # android-actions/setup-android@v3 quebrava ao pedir o pacote "tools",
+-      # que não existe mais; aqui só aceitamos as licenças.
+-      - name: Aceitar licenças do Android SDK
+-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+-
+-      - uses: actions/setup-node@v4
+-        with:
+-          node-version: '22'
+-          cache: npm
+-
+-      - name: Instalar dependências
+-        run: npm ci --ignore-scripts
+-
+-      # Falha cedo (antes dos ~5 min de build) se a lógica de segurança/atualização quebrar.
+-      - name: Rodar os testes
+-        run: npm test
+-
+-      - name: Sincronizar o app web com o Android
+-        run: npm run sync
+-
+-      - uses: gradle/actions/setup-gradle@v4
+-
+-      - name: Compilar o APK
+-        working-directory: android
+-        run: |
+-          chmod +x gradlew
+-          ./gradlew assembleDebug --no-daemon
+-
+-      - name: Guardar o APK
+-        run: cp android/app/build/outputs/apk/debug/app-debug.apk Imago.apk
+-
+-      - uses: actions/upload-artifact@v4
+-        with:
+-          name: Imago-apk
+-          path: Imago.apk
+-
+-      # Link fixo de download: https://github.com/<usuario>/<repo>/releases/download/apk-latest/Imago.apk
+-      - name: Publicar o APK na Release "apk-latest"
+-        env:
+-          GH_TOKEN: ${{ github.token }}
+-        run: |
+-          gh release delete apk-latest --cleanup-tag -y || true
+-          gh release create apk-latest Imago.apk \
+-            --title "Imago (APK Android)" \
+-            --notes "APK gerado automaticamente a partir do commit ${GITHUB_SHA::7}. Baixe o Imago.apk no celular e instale."
+diff -ruN a/Imago-main/app.js b/Imago-main/app.js
+--- a/Imago-main/app.js	2026-09-30 01:33:18.000000000 +0000
++++ b/Imago-main/app.js	2026-09-30 01:47:48.000000000 +0000
+@@ -17,6 +17,15 @@
+   toastTimer = setTimeout(() => t.classList.add('hidden'), 4500);
+ }
+ 
++// localStorage pode lançar exceção (modo privado, cookies bloqueados, cota cheia).
++// Como é lido logo no início do arquivo, sem proteção o app inteiro deixava de abrir.
++function storageGet(key) {
++  try { return window.localStorage.getItem(key); } catch { return null; }
++}
++function storageSet(key, value) {
++  try { window.localStorage.setItem(key, value); } catch { /* segue sem salvar */ }
++}
++
+ const LOCAL_CONNECT_TIMEOUT_MS = 2500;
+ const STORAGE_KEY = 'imago-last-connection';
+ const MAX_RECONNECT_ATTEMPTS = 6;
+@@ -86,7 +95,7 @@
+ let userInitiatedDisconnect = false;
+ let reconnectAttempts = 0;
+ let lastConnectionParams = null; // { ip, port, code, token }
+-let networkMode = localStorage.getItem('imago-network-mode') || 'auto';
++let networkMode = storageGet('imago-network-mode') || 'auto';
+ let connectionTransport = null;
+ // Codigo de seguranca do Imago atual -- vem do QR/link (?token=...) ou de
+ // uma conexao anterior salva. Sem o token certo, o PC recusa a conexao (ver
+@@ -96,6 +105,7 @@
+ let isReconnecting = false;
+ let activeTab = 'slides';
+ let currentSlideIndex = null;
++let currentSlideTotal = null;
+ let thumbItems = new Map(); // index -> { wrapper, img }
+ let officeState = null;
+ let officeSlidesList = [];
+@@ -166,11 +176,11 @@
+ 
+ // ---------- Lembrar a última conexão ----------
+ function saveLastConnection(params) {
+-  localStorage.setItem(STORAGE_KEY, JSON.stringify(params));
++  storageSet(STORAGE_KEY, JSON.stringify(params));
+ }
+ function loadLastConnection() {
+   try {
+-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
++    return JSON.parse(storageGet(STORAGE_KEY) || 'null');
+   } catch {
+     return null;
+   }
+@@ -202,6 +212,8 @@
+   resetThumbsGrid();
+   officeState = null;
+   officeSlidesList = [];
++  currentSlideIndex = null;
++  currentSlideTotal = null;
+   setActiveTab('slides', { silent: true });
+ }
+ 
+@@ -248,8 +260,28 @@
+   els.timer.textContent = `${m}:${s}`;
+ }
+ 
++// Cada toque do dedo gerava uma mensagem; pelo relay/BLE isso enfileirava e atrasava o cursor.
++// Aqui os movimentos são somados e enviados no máximo ~60x/s (o modo Bluetooth já fazia isso).
++let moveAcc = { dx: 0, dy: 0 };
++let moveTimer = null;
++function queueMove(payload) {
++  moveAcc.dx += payload.dx;
++  moveAcc.dy += payload.dy;
++  if (moveTimer) return;
++  moveTimer = setTimeout(() => {
++    moveTimer = null;
++    const { dx, dy } = moveAcc;
++    moveAcc = { dx: 0, dy: 0 };
++    if (dx || dy) sendNow({ type: 'move', dx, dy });
++  }, 16);
++}
++
+ function send(payload) {
+   if (btMode) return btSend(payload);
++  if (payload.type === 'move') { queueMove(payload); return; }
++  sendNow(payload);
++}
++function sendNow(payload) {
+   if (webBleMode) { webBleSend(payload).catch(() => {}); return; }
+   if (!socket || socket.readyState !== WebSocket.OPEN) {
+     if (payload.type === 'command') toast('Sem conexão com o PC. Aguarde a reconexão ou conecte de novo.');
+@@ -269,8 +301,9 @@
+   els.slideTitle.textContent = msg.title || '';
+   els.slideNotes.textContent = msg.notes || '';
+   currentSlideIndex = msg.index;
++  currentSlideTotal = msg.total;
+   document.getElementById('slide-progress-bar').style.width = msg.total ? (msg.index / msg.total) * 100 + '%' : '0';
+-  try { els.notes.value = localStorage.getItem('imago-notes-' + msg.index) || ''; } catch { /* ignora */ }
++  try { els.notes.value = storageGet('imago-notes-' + msg.index) || ''; } catch { /* ignora */ }
+   highlightActiveThumb();
+   updateNextPreview();
+ }
+@@ -401,6 +434,7 @@
+ }
+ 
+ function handleIncomingPayload(msg) {
++    if (!msg || typeof msg !== 'object') return;
+     if (msg.type === 'slide-info') updateSlideInfo(msg);
+     else if (msg.type === 'thumbs-status') handleThumbsStatus(msg);
+     else if (msg.type === 'slide-thumb') handleSlideThumb(msg);
+@@ -428,6 +462,7 @@
+ const WEB_BLE_EVENT_UUID = '19b10002-e8f2-537e-4f6c-d104768a1214';
+ let webBleHelloResolve = null;
+ let webBleRxBuffer = '';
++let webBleDecoder = null; // criado sob demanda (so o Web Bluetooth usa)
+ 
+ function setWebBleMessage(text) {
+   if (els.webBleMessage) els.webBleMessage.textContent = text;
+@@ -441,7 +476,9 @@
+ }
+ 
+ function handleWebBleNotification(event) {
+-  webBleRxBuffer += new TextDecoder().decode(event.target.value);
++  // stream:true guarda os bytes soltos de um caractere multibyte (ã, é, ç...) até o próximo pacote.
++  if (!webBleDecoder) webBleDecoder = new TextDecoder();
++  webBleRxBuffer += webBleDecoder.decode(event.target.value, { stream: true });
+   const lines = webBleRxBuffer.split('\n');
+   webBleRxBuffer = lines.pop() || '';
+   for (const line of lines) {
+@@ -485,6 +522,7 @@
+     await events.startNotifications();
+     events.addEventListener('characteristicvaluechanged', handleWebBleNotification);
+     webBleRxBuffer = '';
++    webBleDecoder = null;
+     await new Promise(async (resolve, reject) => {
+       const timer = setTimeout(() => reject(new Error('web-ble-auth-timeout')), 6000);
+       webBleHelloResolve = () => { clearTimeout(timer); resolve(); };
+@@ -501,6 +539,13 @@
+   } catch (error) {
+     webBleMode = false;
+     webBleCommand = null;
++    webBleHelloResolve = null;
++    try {
++      // Sem isso o PC continuava com um "celular" conectado que ninguém usava.
++      // O listener sai antes para o aviso de "desconectado" não apagar a mensagem de erro.
++      webBleDevice?.removeEventListener('gattserverdisconnected', handleWebBleDisconnected);
++      webBleDevice?.gatt?.disconnect();
++    } catch { /* já desconectado */ }
+     const text = error?.message === 'web-ble-auth-timeout'
+       ? 'O PC recusou a autenticação. Abra o QR code novamente e tente escolher o dispositivo certo.'
+       : 'Não foi possível conectar. Use Chrome/Android, HTTPS e mantenha o Imago aberto no PC.';
+@@ -647,7 +692,7 @@
+ 
+ function setNetworkMode(mode) {
+   networkMode = ['auto', 'wifi', 'internet'].includes(mode) ? mode : 'auto';
+-  localStorage.setItem('imago-network-mode', networkMode);
++  storageSet('imago-network-mode', networkMode);
+   document.querySelectorAll('[data-network-mode]').forEach((button) => {
+     const active = button.dataset.networkMode === networkMode;
+     button.classList.toggle('active', active);
+@@ -722,14 +767,26 @@
+   }
+   isReconnecting = true;
+   reconnectAttempts++;
++  const params = lastConnectionParams;
++  // O banner também é usado pelo modo Bluetooth com outro texto; restaura o padrão.
++  els.reconnectBanner.textContent = 'Reconectando…';
+   els.reconnectBanner.classList.remove('hidden');
+   setStatus(false, `Reconectando... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+ 
+   const delay = Math.min(1000 * reconnectAttempts, 5000);
+   await new Promise((r) => setTimeout(r, delay));
++  // Tocou em Desconectar enquanto esperava? Então não reconecta.
++  if (userInitiatedDisconnect) { isReconnecting = false; return; }
+ 
+   try {
+-    const ws = await tryConnect(lastConnectionParams);
++    const ws = await tryConnect(params);
++    if (userInitiatedDisconnect) {
++      // Desconectou durante a tentativa: fecha a conexão que acabou de abrir em vez de
++      // deixá-la ativa no PC com a tela de conexão aberta no celular.
++      try { ws.close(); } catch { /* ignora */ }
++      isReconnecting = false;
++      return;
++    }
+     socket = ws;
+     connectionTransport = ws.url?.startsWith('ws://') ? 'wifi' : 'internet';
+     reconnectAttempts = 0;
+@@ -752,6 +809,8 @@
+ }
+ 
+ function handleDisconnect() {
++  // Sai da aba Laser antes de fechar: senão o laser ficava ligado no PowerPoint.
++  if (activeTab === 'laser') send({ type: 'command', command: 'laser-off' });
+   userInitiatedDisconnect = true;
+   if (btMode) btLeave();
+   if (webBleMode) {
+@@ -893,7 +952,7 @@
+ 
+ function updateNextPreview() {
+   const box = $('next-preview');
+-  const total = officeState?.ppt?.total;
++  const total = officeState?.ppt?.total || currentSlideTotal;
+   if (!total || !currentSlideIndex || currentSlideIndex >= total) {
+     box.classList.add('hidden');
+     return;
+@@ -941,7 +1000,7 @@
+   const p = msg.ppt;
+   if (p) {
+     // Cronômetro vem do PC quando a apresentação está rodando
+-    if (p.inShow && p.elapsed >= 0) {
++    if (p.inShow && p.elapsed >= 0 && !timerPaused) {
+       timerSeconds = p.elapsed;
+       updateTimerDisplay();
+     }
+@@ -1256,7 +1315,7 @@
+       o.textContent = d.name;
+       sel.appendChild(o);
+     });
+-    const last = localStorage.getItem('imago-bt-address');
++    const last = storageGet('imago-bt-address');
+     if (last && list.some((d) => d.address === last)) sel.value = last;
+     sel.classList.toggle('hidden', list.length < 2);
+     btUpdateGuide({ state: btLastState });
+@@ -1302,7 +1361,7 @@
+       throw new Error('O Bluetooth demorou para iniciar. Ligue o Bluetooth, aguarde alguns segundos e tente novamente.');
+     }
+     const address = selectedBtAddress();
+-    if (address) localStorage.setItem('imago-bt-address', address);
++    if (address) storageSet('imago-bt-address', address);
+     btn.textContent = 'Conectando ao PC…';
+     const s = await BtHid.connect({ address });
+     btRender(s);
+@@ -1334,9 +1393,9 @@
+   document.getElementById('bt-card').classList.remove('hidden');
+   if (!loadLastConnection()?.ip) document.getElementById('wifi-card').open = false;
+   const chk = document.getElementById('chk-volume');
+-  chk.checked = localStorage.getItem('imago-volume-keys') !== '0';
++  chk.checked = storageGet('imago-volume-keys') !== '0';
+   chk.addEventListener('change', () => {
+-    localStorage.setItem('imago-volume-keys', chk.checked ? '1' : '0');
++    storageSet('imago-volume-keys', chk.checked ? '1' : '0');
+     volumeKeysApply();
+   });
+   window.addEventListener('imagoVolume', (e) => {
+@@ -1369,9 +1428,9 @@
+     if (document.visibilityState !== 'visible' || !BtHid || !els.controlScreen.classList.contains('hidden')) return;
+     try {
+       const devices = await btRefreshDevices();
+-      const saved = localStorage.getItem('imago-bt-address');
++      const saved = storageGet('imago-bt-address');
+       if (!btUserLeft && devices.length === 1 && !saved) {
+-        localStorage.setItem('imago-bt-address', devices[0].address);
++        storageSet('imago-bt-address', devices[0].address);
+         btMode = true;
+         const state = await btConnectSelected();
+         if (state?.state !== 'connected') btMode = false;
+@@ -1385,7 +1444,7 @@
+       await BtHid.start();
+       await btRefreshDevices();
+       btRender(await BtHid.getStatus());
+-      if (!btAutoTried && localStorage.getItem('imago-bt-address')) {
++      if (!btAutoTried && storageGet('imago-bt-address')) {
+         btAutoTried = true;
+         setTimeout(async () => {
+           btMode = true;
+@@ -1406,28 +1465,29 @@
+ // ---------- Melhorias v2.1 ----------
+ // Notas pessoais por slide (salvas no celular)
+ els.notes.addEventListener('input', () => {
+-  try { localStorage.setItem('imago-notes-' + (currentSlideIndex || 0), els.notes.value); } catch { /* sem espaço */ }
++  try { storageSet('imago-notes-' + (currentSlideIndex || 0), els.notes.value); } catch { /* sem espaço */ }
+ });
+ // Tamanho da letra das notas do apresentador
+-let notesSize = Number(localStorage.getItem('imago-notes-size')) || 14;
++let notesSize = Number(storageGet('imago-notes-size')) || 14;
+ function applyNotesSize(d = 0) {
+   notesSize = Math.min(28, Math.max(11, notesSize + d));
+   els.slideNotes.style.fontSize = notesSize + 'px';
+-  localStorage.setItem('imago-notes-size', String(notesSize));
++  storageSet('imago-notes-size', String(notesSize));
+ }
+ document.getElementById('btn-notes-minus').addEventListener('click', () => applyNotesSize(-2));
+ document.getElementById('btn-notes-plus').addEventListener('click', () => applyNotesSize(2));
+ applyNotesSize();
+ // Sensibilidade do laser
+ const sensEl = document.getElementById('laser-sens');
+-laserSens = Number(localStorage.getItem('imago-laser-sens')) || 2.2;
++laserSens = Number(storageGet('imago-laser-sens')) || 2.2;
+ sensEl.value = laserSens;
+ sensEl.addEventListener('input', () => {
+   laserSens = Number(sensEl.value);
+-  localStorage.setItem('imago-laser-sens', String(laserSens));
++  storageSet('imago-laser-sens', String(laserSens));
+ });
+ // Atalhos de teclado (útil ao usar o app no computador/tablet)
+ document.addEventListener('keydown', (e) => {
++  if (e.ctrlKey || e.metaKey || e.altKey) return;
+   if (els.controlScreen.classList.contains('hidden') || /^(TEXTAREA|INPUT|SELECT)$/.test(e.target.tagName)) return;
+   if (['ArrowRight', 'PageDown', ' '].includes(e.key)) { e.preventDefault(); sendCommand('next'); }
+   else if (['ArrowLeft', 'PageUp'].includes(e.key)) { e.preventDefault(); sendCommand('prev'); }
+diff -ruN a/Imago-main/controller.js b/Imago-main/controller.js
+--- a/Imago-main/controller.js	2026-09-30 01:33:18.000000000 +0000
++++ b/Imago-main/controller.js	2026-09-30 01:47:08.000000000 +0000
+@@ -115,7 +115,7 @@
+ 
+ // ---------- Codigo de seguranca da sessao ----------
+ // Sem isso, qualquer aparelho na mesma rede Wi-Fi conseguiria se conectar
+-// direto no servidor local (ou adivinhar o codigo de 4 digitos do relay) e
++// direto no servidor local (ou adivinhar o codigo de 6 digitos do relay) e
+ // controlar a apresentacao sem nunca ter escaneado o QR code. Este codigo e
+ // gerado do zero toda vez que o Imago abre, vai embutido no QR/link (campo
+ // "token") e tambem e exigido como primeira mensagem de qualquer conexao
+@@ -124,9 +124,9 @@
+ // mao se o QR nao puder ser escaneado.
+ const TOKEN_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+ function generateSessionToken(length = 10) {
+-  const bytes = crypto.randomBytes(length);
++  // randomInt sorteia de forma uniforme (bytes % 31 favorecia levemente os primeiros caracteres).
+   let out = '';
+-  for (let i = 0; i < length; i++) out += TOKEN_ALPHABET[bytes[i] % TOKEN_ALPHABET.length];
++  for (let i = 0; i < length; i++) out += TOKEN_ALPHABET[crypto.randomInt(TOKEN_ALPHABET.length)];
+   return out;
+ }
+ const SESSION_TOKEN = generateSessionToken();
+@@ -244,10 +244,6 @@
+   });
+ }
+ 
+-function getLocalIp() {
+-  return network.bestLocalIp();
+-}
+-
+ // ---------- Historico de sessoes ----------
+ let activeSession = null;
+ 
+@@ -271,12 +267,8 @@
+   safeSend(ws, JSON.stringify({ type: 'history', sessions: history.getRecent(10) }));
+ }
+ 
+-// Encerra e salva a sessao em andamento se o script for fechado no meio de
+-// uma apresentacao (Ctrl+C no terminal), pra nao perder o registro.
+-process.on('SIGINT', () => {
+-  endSessionHistory();
+-  process.exit(0);
+-});
++// (O historico da sessao em andamento e salvo no evento 'exit', la no final do
++// arquivo, cobrindo Ctrl+C, fechar a janela e encerramento pelo sistema.)
+ 
+ // ---------- Miniaturas dos slides ----------
+ const thumbsCache = new Map(); // index (1-based) -> data URL
+@@ -423,11 +415,14 @@
+       } else {
+         if (msg?.fromCurrent) robot.keyTap('f5', ['shift']); else robot.keyTap('f5');
+         if (slidesData.length) {
+-          currentSlide = 1;
++          if (!msg?.fromCurrent) currentSlide = 1;
+           broadcastSlideInfo();
+         }
+       }
+       beginSessionHistory();
++      if (!viaOffice && activeSession && currentSlide > 0) {
++        activeSession.maxSlideReached = Math.max(activeSession.maxSlideReached, currentSlide);
++      }
+       break;
+     case 'end':
+       if (viaOffice) office.send({ cmd: 'ppt.end' });
+@@ -828,22 +823,21 @@
+ updater.checkForUpdate({ manifestUrl: UPDATE_MANIFEST_URL, currentVersion: CURRENT_VERSION });
+ if (!RELAY_NOT_CONFIGURED) console.log('Conectando ao relay (modo dados moveis)... a rede local abre em seguida.');
+ 
+-// ---------- Encerramento: aplica atualizacao pendente (se houver) ----------
+-// Cobre tanto fechar a janela do terminal (SIGINT/Ctrl+C, tratado como
+-// "encerrar" -- ver history em modules.js) quanto process.exit chamado por outro
+-// caminho. So dispara o processo de atualizacao, nao trava o fechamento.
++// ---------- Encerramento: salva o historico e aplica atualizacao pendente ----------
++// Tudo passa pelo evento 'exit', que roda em QUALQUER saida (process.exit, Ctrl+C,
++// fechar a janela, encerramento pelo sistema). Antes, so SIGINT salvava o historico
++// da apresentacao em andamento: SIGTERM/SIGHUP (fechar a janela) perdiam o registro.
++// Aqui so se dispara o processo de atualizacao, sem travar o fechamento.
+ let updateHandled = false;
+ function handleExit() {
+   if (updateHandled) return;
+   updateHandled = true;
+   updater.launchApplyIfReady();
+ }
+-process.on('exit', handleExit);
+-process.on('SIGINT', () => {
+-  handleExit();
+-  process.exit(0);
+-});
+-process.on('SIGTERM', () => {
++process.on('exit', () => {
++  endSessionHistory();
+   handleExit();
+-  process.exit(0);
+ });
++for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
++  process.on(signal, () => process.exit(0));
++}
+diff -ruN a/Imago-main/controller_test.js b/Imago-main/controller_test.js
+--- a/Imago-main/controller_test.js	1970-01-01 00:00:00.000000000 +0000
++++ b/Imago-main/controller_test.js	2026-09-30 01:46:44.000000000 +0000
+@@ -0,0 +1,244 @@
++// Teste de integração do controller.js: sobe o programa do PC de verdade (com um
++// "robotjs" de mentira que só anota as teclas) e fala com ele por WebSocket/HTTP.
++// Roda numa cópia temporária, então não mexe no config.json/histórico do projeto.
++// Rode com: npm test (precisa de "npm ci").
++const assert = require('assert');
++const fs = require('fs');
++const net = require('net');
++const os = require('os');
++const path = require('path');
++const http = require('http');
++const { spawn } = require('child_process');
++const WebSocket = require('ws');
++
++let passed = 0;
++async function test(name, fn) {
++  try {
++    await fn();
++    passed++;
++    console.log(`  ok  - ${name}`);
++  } catch (err) {
++    console.log(`FAIL  - ${name}`);
++    console.log(`        ${err.message}`);
++    process.exitCode = 1;
++  }
++}
++const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
++
++function freePort() {
++  return new Promise((resolve, reject) => {
++    const srv = net.createServer();
++    srv.listen(0, '127.0.0.1', () => {
++      const { port } = srv.address();
++      srv.close(() => resolve(port));
++    });
++    srv.on('error', reject);
++  });
++}
++
++function httpGet(port, urlPath) {
++  return new Promise((resolve, reject) => {
++    http.get({ host: '127.0.0.1', port, path: urlPath }, (res) => {
++      const chunks = [];
++      res.on('data', (c) => chunks.push(c));
++      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) }));
++    }).on('error', reject);
++  });
++}
++
++// Abre um WebSocket e devolve { ws, inbox, send, next, closed }.
++function connect(port) {
++  return new Promise((resolve, reject) => {
++    const ws = new WebSocket(`ws://127.0.0.1:${port}`);
++    const inbox = [];
++    const waiters = [];
++    let closeInfo = null;
++    const closedWaiters = [];
++    ws.on('message', (raw) => {
++      let msg;
++      try { msg = JSON.parse(raw.toString()); } catch { return; }
++      const w = waiters.findIndex((x) => x.match(msg));
++      if (w >= 0) waiters.splice(w, 1)[0].resolve(msg);
++      else inbox.push(msg);
++    });
++    ws.on('close', (code) => { closeInfo = { code }; closedWaiters.splice(0).forEach((f) => f(closeInfo)); });
++    ws.on('error', reject);
++    ws.on('open', () =>
++      resolve({
++        ws,
++        inbox,
++        send: (o) => ws.send(typeof o === 'string' ? o : JSON.stringify(o)),
++        next(match = () => true, ms = 4000) {
++          const i = inbox.findIndex(match);
++          if (i >= 0) return Promise.resolve(inbox.splice(i, 1)[0]);
++          return new Promise((res, rej) => {
++            const t = setTimeout(() => rej(new Error('tempo esgotado esperando mensagem')), ms);
++            waiters.push({ match, resolve: (m) => { clearTimeout(t); res(m); } });
++          });
++        },
++        closed(ms = 4000) {
++          if (closeInfo) return Promise.resolve(closeInfo);
++          return new Promise((res, rej) => {
++            const t = setTimeout(() => rej(new Error('conexão não foi fechada')), ms);
++            closedWaiters.push((c) => { clearTimeout(t); res(c); });
++          });
++        },
++      })
++    );
++  });
++}
++
++(async () => {
++  // ---- cópia temporária do projeto (o controller grava config/histórico ao lado dele) ----
++  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'imago-ctrl-test-'));
++  const files = [
++    'controller.js', 'modules.js', 'web-ble-bridge.js', 'package.json', 'office-bridge.ps1', 'input-bridge.ps1',
++    'index.html', 'app.js', 'capacitor.js', 'manifest.json', 'version.json', 'icon.svg',
++    'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png',
++  ];
++  for (const f of files) fs.copyFileSync(path.join(__dirname, f), path.join(tmp, f));
++  fs.symlinkSync(path.join(__dirname, 'node_modules'), path.join(tmp, 'node_modules'), 'junction');
++
++  // "robotjs" de mentira: anota cada tecla; e o Bluetooth opcional fica indisponível.
++  const keysLog = path.join(tmp, 'keys.log');
++  fs.writeFileSync(
++    path.join(tmp, 'stub-robot.js'),
++    `const Module = require('module');
++const fs = require('fs');
++const load = Module._load;
++Module._load = function (request, ...rest) {
++  if (request === 'robotjs') {
++    const log = (o) => fs.appendFileSync(${JSON.stringify(keysLog)}, JSON.stringify(o) + '\\n');
++    return {
++      keyTap: (k, mods) => log({ k, mods: mods || [] }),
++      keyToggle: (k, s) => log({ toggle: k, s }),
++      mouseClick: () => log({ click: 1 }),
++      moveMouse: (x, y) => log({ mv: [x, y] }),
++      getMousePos: () => ({ x: 100, y: 100 }),
++      getScreenSize: () => ({ width: 1920, height: 1080 }),
++    };
++  }
++  if (request === '@stoprocent/bleno') throw new Error('indisponivel no teste');
++  return load.call(this, request, ...rest);
++};
++`
++  );
++  const keys = () =>
++    fs.existsSync(keysLog)
++      ? fs.readFileSync(keysLog, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l))
++      : [];
++
++  const port = await freePort();
++  let out = '';
++  const child = spawn(process.execPath, ['-r', './stub-robot.js', 'controller.js'], {
++    cwd: tmp,
++    env: { ...process.env, LOCAL_PORT: String(port), RELAY_URL: '', PPTX_PATH: '' },
++    stdio: ['ignore', 'pipe', 'pipe'],
++  });
++  child.stdout.on('data', (d) => (out += d));
++  child.stderr.on('data', (d) => (out += d));
++  const exited = new Promise((resolve) => child.on('exit', (code, signal) => resolve({ code, signal })));
++
++  const token = await new Promise((resolve, reject) => {
++    const t = setInterval(() => {
++      const m = out.match(/Codigo de seguranca:\s+([A-Z0-9]{10})/);
++      if (m) { clearInterval(t); resolve(m[1]); }
++    }, 50);
++    setTimeout(() => { clearInterval(t); reject(new Error('controller não iniciou:\n' + out)); }, 10000);
++  });
++
++  console.log('== controller.js (integração) ==');
++
++  await test('servidor local serve o app e recusa caminhos fora da lista', async () => {
++    const home = await httpGet(port, '/');
++    assert.strictEqual(home.status, 200);
++    assert.match(home.body.toString('utf8'), /<title>/i);
++    assert.strictEqual(home.headers['x-content-type-options'], 'nosniff');
++    for (const bad of ['/package.json', '/../package.json', '/config.json', '/controller.js', '/%2e%2e/package.json']) {
++      assert.strictEqual((await httpGet(port, bad)).status, 404, `deveria negar ${bad}`);
++    }
++  });
++
++  await test('código de segurança errado é recusado (4003) e nada é executado', async () => {
++    const c = await connect(port);
++    c.send({ type: 'hello', token: 'ERRADO0000' });
++    c.send({ type: 'command', command: 'next' });
++    assert.strictEqual((await c.closed()).code, 4003);
++    assert.deepStrictEqual(keys(), []);
++  });
++
++  const phone = await connect(port);
++  await test('código certo autentica (hello-ok) e recebe o estado', async () => {
++    phone.send({ type: 'hello', token });
++    await phone.next((m) => m.type === 'hello-ok');
++    await phone.next((m) => m.type === 'thumbs-status');
++  });
++
++  await test('comandos viram teclas no PC (e "ir para slide" é ignorado sem .pptx configurado)', async () => {
++    phone.send({ type: 'command', command: 'next' });
++    phone.send({ type: 'command', command: 'prev' });
++    phone.send({ type: 'command', command: 'goto', index: 12 }); // sem total de slides conhecido, nao faz nada
++    await sleep(300);
++    const taps = keys().map((k) => k.k);
++    assert.deepStrictEqual(taps, ['right', 'left']);
++  });
++
++  await test('mensagens malformadas não derrubam o controller', async () => {
++    phone.send('isto não é json');
++    phone.send('null');
++    phone.send('42');
++    phone.send({ type: 'move', dx: 'abc', dy: null });
++    phone.send({ type: 'command', command: 'nao-existe' });
++    await sleep(200);
++    assert.strictEqual(child.exitCode, null, 'o processo deveria continuar rodando');
++    phone.send({ type: 'command', command: 'black' });
++    await sleep(200);
++    assert.strictEqual(keys().pop().k, 'b');
++  });
++
++  await test('movimento do touchpad é limitado e convertido em posição na tela', async () => {
++    phone.send({ type: 'move', dx: 999999, dy: -999999 });
++    await sleep(200);
++    const mv = keys().filter((k) => k.mv).pop().mv;
++    assert.deepStrictEqual(mv, [1920, 0]); // 100+2000 limita na largura da tela; 100-2000 limita em 0
++  });
++
++  await test('"Iniciar deste slide" usa Shift+F5 e "Iniciar" usa F5', async () => {
++    phone.send({ type: 'command', command: 'start', fromCurrent: true });
++    phone.send({ type: 'command', command: 'start' });
++    await sleep(200);
++    const f5 = keys().filter((k) => k.k === 'f5');
++    assert.deepStrictEqual(f5.map((k) => k.mods), [['shift'], []]);
++  });
++
++  await test('histórico é devolvido ao pedir (e vem vazio antes da 1ª sessão)', async () => {
++    phone.send({ type: 'get-history' });
++    const h = await phone.next((m) => m.type === 'history');
++    assert.ok(Array.isArray(h.sessions));
++  });
++
++  const ehWindows = process.platform === 'win32';
++  await test(
++    ehWindows ? 'encerramento salva a sessão (pulado no Windows: SIGTERM não existe lá)' : 'SIGTERM salva a sessão em andamento no histórico',
++    async () => {
++      if (ehWindows) return;
++      // Os dois "Iniciar" acima: o 2º salva a sessão A e abre a B. Só a B depende do encerramento.
++      child.kill('SIGTERM');
++      const { code } = await exited;
++      assert.strictEqual(code, 0);
++      const histPath = path.join(tmp, 'session-history.json');
++      assert.ok(fs.existsSync(histPath), 'session-history.json deveria ter sido criado');
++      const list = JSON.parse(fs.readFileSync(histPath, 'utf8'));
++      assert.strictEqual(list.length, 2, 'a sessão em andamento (B) também deveria ter sido salva ao encerrar');
++      assert.ok(list[0].durationSec >= 0);
++    }
++  );
++
++  if (child.exitCode === null) child.kill();
++  await exited;
++  try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* arquivo em uso no Windows: o SO limpa depois */ }
++  console.log(`\n${passed} teste(s) do controller passaram.`);
++})().catch((err) => {
++  console.error('FALHA no teste do controller:', err);
++  process.exit(1);
++});
+diff -ruN a/Imago-main/logic_test.js b/Imago-main/logic_test.js
+--- a/Imago-main/logic_test.js	2026-09-30 01:33:18.000000000 +0000
++++ b/Imago-main/logic_test.js	2026-09-30 01:44:50.000000000 +0000
+@@ -1,9 +1,12 @@
+-// Testes isolados da lógica de segurança (as MESMAS implementações usadas
+-// em updater.js / relay-server.js / controller.js), sem depender de
+-// 'ws' nem 'adm-zip' instalados (rede indisponível neste ambiente).
++// Testes da lógica de segurança.
++//  - Funções do atualizador: importadas do modules.js (código REAL, precisa de "npm ci").
++//  - safeEqual / makeCode / generateSessionToken: ficam em controller.js e relay-server.js,
++//    que abrem servidores ao serem carregados e por isso não podem ser importados aqui;
++//    o teste usa uma CÓPIA delas -- se mudar lá, mude aqui também.
+ const assert = require('assert');
+ const crypto = require('crypto');
+ const path = require('path');
++const { updater } = require('./modules');
+ 
+ let passed = 0;
+ function test(name, fn) {
+@@ -18,16 +21,8 @@
+   }
+ }
+ 
+-console.log('== compareVersions (updater.js) ==');
+-function compareVersions(a, b) {
+-  const pa = String(a).split('.').map((n) => parseInt(n, 10) || 0);
+-  const pb = String(b).split('.').map((n) => parseInt(n, 10) || 0);
+-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+-    const diff = (pa[i] || 0) - (pb[i] || 0);
+-    if (diff !== 0) return diff;
+-  }
+-  return 0;
+-}
++console.log('== compareVersions (modules.js > updater) ==');
++const { compareVersions, hashesMatch, isValidManifest, isValidPlatformEntry } = updater;
+ test('1.2.0 > 1.1.0', () => assert.ok(compareVersions('1.2.0', '1.1.0') > 0));
+ test('1.1.0 == 1.1.0', () => assert.strictEqual(compareVersions('1.1.0', '1.1.0'), 0));
+ test('1.1.0 < 1.10.0 (nao trata como string)', () => assert.ok(compareVersions('1.1.0', '1.10.0') < 0));
+@@ -45,14 +40,7 @@
+ test('token de tamanho diferente nao lanca erro', () => assert.strictEqual(safeEqual('ABC', 'ABCDE'), false));
+ test('token undefined nao lanca erro', () => assert.strictEqual(safeEqual(undefined, 'ABC'), false));
+ 
+-console.log('\n== hashesMatch (SHA-256, updater.js) ==');
+-function hashesMatch(a, b) {
+-  if (typeof a !== 'string' || typeof b !== 'string') return false;
+-  const bufA = Buffer.from(a.toLowerCase(), 'hex');
+-  const bufB = Buffer.from(b.toLowerCase(), 'hex');
+-  if (bufA.length !== 32 || bufB.length !== 32) return false;
+-  return crypto.timingSafeEqual(bufA, bufB);
+-}
++console.log('\n== hashesMatch (SHA-256, modules.js > updater) ==');
+ const h1 = crypto.createHash('sha256').update('conteudo-a').digest('hex');
+ const h2 = crypto.createHash('sha256').update('conteudo-b').digest('hex');
+ test('hash igual (mesmo caso) == true', () => assert.strictEqual(hashesMatch(h1, h1), true));
+@@ -60,34 +48,16 @@
+ test('hash diferente == false', () => assert.strictEqual(hashesMatch(h1, h2), false));
+ test('hash malformado nao lanca erro', () => assert.strictEqual(hashesMatch('nao-e-hex', h1), false));
+ test('hash vazio == false', () => assert.strictEqual(hashesMatch('', ''), false));
++test('hash com tamanho errado == false', () => assert.strictEqual(hashesMatch(h1.slice(0, 62), h1.slice(0, 62)), false));
+ 
+-console.log('\n== isValidManifest / isValidPlatformEntry (updater.js) ==');
+-function isValidManifest(manifest) {
+-  return Boolean(
+-    manifest &&
+-      typeof manifest === 'object' &&
+-      typeof manifest.version === 'string' &&
+-      /^\d+\.\d+\.\d+$/.test(manifest.version) &&
+-      (manifest.notes === undefined || typeof manifest.notes === 'string') &&
+-      manifest.downloads &&
+-      typeof manifest.downloads === 'object'
+-  );
+-}
+-function isValidPlatformEntry(entry) {
+-  return Boolean(
+-    entry &&
+-      typeof entry === 'object' &&
+-      typeof entry.url === 'string' &&
+-      entry.url.startsWith('https://') &&
+-      typeof entry.sha256 === 'string' &&
+-      /^[a-f0-9]{64}$/i.test(entry.sha256)
+-  );
+-}
++console.log('\n== isValidManifest / isValidPlatformEntry (modules.js > updater) ==');
+ test('manifesto valido aceito', () =>
+   assert.strictEqual(isValidManifest({ version: '1.2.0', downloads: {} }), true));
+ test('manifesto sem version rejeitado', () => assert.strictEqual(isValidManifest({ downloads: {} }), false));
+ test('manifesto com version nao-semver rejeitado', () =>
+   assert.strictEqual(isValidManifest({ version: 'v1', downloads: {} }), false));
++test('manifesto com notes de tipo errado rejeitado', () =>
++  assert.strictEqual(isValidManifest({ version: '1.2.0', notes: 5, downloads: {} }), false));
+ test('manifesto null rejeitado', () => assert.strictEqual(isValidManifest(null), false));
+ test('manifesto string (injecao de tipo) rejeitado', () => assert.strictEqual(isValidManifest('1.2.0'), false));
+ test('entry https + sha256 valido aceito', () =>
+@@ -98,16 +68,9 @@
+   assert.strictEqual(isValidPlatformEntry({ url: 'https://x.com/a.zip', sha256: 'abc' }), false));
+ test('entry sem sha256 rejeitado', () => assert.strictEqual(isValidPlatformEntry({ url: 'https://x.com/a.zip' }), false));
+ 
+-console.log('\n== assertSafeZipEntries (zip slip, updater.js) ==');
+-function assertSafeZipEntries(entries, destDir) {
+-  const destRoot = path.resolve(destDir);
+-  for (const entry of entries) {
+-    const resolved = path.resolve(destDir, entry.entryName);
+-    if (resolved !== destRoot && !resolved.startsWith(destRoot + path.sep)) {
+-      throw new Error(`Entrada suspeita no arquivo de atualização: "${entry.entryName}".`);
+-    }
+-  }
+-}
++console.log('\n== assertSafeZipEntries (zip slip, modules.js > updater) ==');
++const assertSafeZipEntries = (entries, destDir) =>
++  updater.assertSafeZipEntries({ getEntries: () => entries }, destDir);
+ const dest = '/tmp/fake-extract-dir';
+ test('entradas normais passam', () => {
+   assertSafeZipEntries([{ entryName: 'Imago.exe' }, { entryName: 'node_modules/robotjs/x.node' }], dest);
+@@ -151,9 +114,8 @@
+ console.log('\n== generateSessionToken (controller.js) — alfabeto e tamanho ==');
+ const TOKEN_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+ function generateSessionToken(length = 10) {
+-  const bytes = crypto.randomBytes(length);
+   let out = '';
+-  for (let i = 0; i < length; i++) out += TOKEN_ALPHABET[bytes[i] % TOKEN_ALPHABET.length];
++  for (let i = 0; i < length; i++) out += TOKEN_ALPHABET[crypto.randomInt(TOKEN_ALPHABET.length)];
+   return out;
+ }
+ test('token tem o tamanho esperado e so usa o alfabeto sem ambiguos', () => {
+diff -ruN a/Imago-main/modules.js b/Imago-main/modules.js
+--- a/Imago-main/modules.js	2026-09-30 01:33:18.000000000 +0000
++++ b/Imago-main/modules.js	2026-09-30 01:44:28.000000000 +0000
+@@ -186,6 +186,8 @@
+   // Largura maxima da miniatura em pixels -- suficiente pra tela de celular,
+   // mantendo o arquivo pequeno (rapido de mandar pelo Wi-Fi/relay).
+   const THUMB_MAX_SIZE = Number(process.env.THUMB_MAX_SIZE) || 420;
++  // Sem limite, um LibreOffice travado deixava "Gerando miniaturas..." para sempre.
++  const SOFFICE_TIMEOUT_MS = Number(process.env.SOFFICE_TIMEOUT_MS) || 3 * 60 * 1000;
+ 
+   function toolExists(cmd) {
+     try {
+@@ -246,7 +248,15 @@
+    * onSlideReady(index, dataUrl) e chamado conforme cada miniatura fica pronta.
+    * onDone(ok, reason) e chamado no final ('reason' so importa quando ok=false).
+    */
+-  function generateThumbnails(pptxPath, totalSlides, onSlideReady, onDone) {
++  function generateThumbnails(pptxPath, totalSlides, onSlideReady, onFinished) {
++    // Garante um unico aviso final: em caso de falha ao iniciar o processo, 'error' e
++    // 'close' disparam os dois, e o app recebia (e mostrava) o resultado duas vezes.
++    let finished = false;
++    const onDone = (ok, reason) => {
++      if (finished) return;
++      finished = true;
++      onFinished(ok, reason);
++    };
+     const tools = checkTools();
+     if (!tools.soffice || !tools.pdftoppm) {
+       onDone(false, 'ferramentas-ausentes');
+@@ -279,7 +289,11 @@
+       return;
+     }
+ 
++    // Perfil proprio do LibreOffice: se o usuario ja estiver com o LibreOffice aberto,
++    // o "--convert-to" usaria a instancia dele e podia nao converter nada (ou travar).
++    const profileUrl = require('url').pathToFileURL(path.join(os.tmpdir(), 'imago-lo-profile')).href;
+     const soffice = spawn(SOFFICE_PATH, [
++      `-env:UserInstallation=${profileUrl}`,
+       '--headless',
+       '--norestore',
+       '--convert-to',
+@@ -289,8 +303,19 @@
+       pptxPath,
+     ]);
+ 
+-    soffice.on('error', () => onDone(false, 'erro-soffice'));
++    const killTimer = setTimeout(() => {
++      try { soffice.kill(); } catch { /* ja encerrou */ }
++      onDone(false, 'erro-soffice');
++    }, SOFFICE_TIMEOUT_MS);
++    killTimer.unref?.();
++
++    soffice.on('error', () => {
++      clearTimeout(killTimer);
++      onDone(false, 'erro-soffice');
++    });
+     soffice.on('close', (code) => {
++      clearTimeout(killTimer);
++      if (finished) return; // estourou o tempo limite: ja foi avisado
+       const pdfPath = path.join(dir, `${path.basename(pptxPath, path.extname(pptxPath))}.pdf`);
+       if (code !== 0 || !fs.existsSync(pdfPath)) {
+         onDone(false, 'erro-soffice');
+@@ -604,6 +629,7 @@
+         } catch {
+           return;
+         }
++        if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') return;
+         if (msg.type === 'ready') this.ready = true;
+         this.emit(msg.type, msg);
+       });
+@@ -816,7 +842,17 @@
+         }
+         hash.update(chunk);
+       });
+-      res.on('error', reject);
++      res.on('error', (err) => {
++        fileStream.destroy();
++        reject(err);
++      });
++      // Conexao cortada no meio: 'end'/'finish' nunca chegam e a promise ficava pendente.
++      res.on('close', () => {
++        if (!res.complete) {
++          fileStream.destroy();
++          reject(new Error('Download da atualização interrompido.'));
++        }
++      });
+       fileStream.on('error', reject);
+       fileStream.on('finish', resolve);
+       res.pipe(fileStream);
+@@ -1044,8 +1080,9 @@
+     // depois de copiado (o .zip às vezes não preserva isso).
+     if (process.platform !== 'win32') {
+       try {
+-        const exeName = fs.readdirSync(appDir).find((f) => f === 'Imago' || f.startsWith('Imago'));
+-        if (exeName) fs.chmodSync(path.join(appDir, exeName), 0o755);
++        // Antes pegava o primeiro item que COMECAVA com "Imago" (podia ser outra coisa).
++        const exePath = path.join(appDir, 'Imago');
++        if (fs.existsSync(exePath)) fs.chmodSync(exePath, 0o755);
+       } catch {
+         /* segue mesmo assim -- se falhar, o usuário so precisa reabrir manualmente */
+       }
+@@ -1065,7 +1102,17 @@
+     }
+   }
+ 
+-  return { checkForUpdate, launchApplyIfReady, applyPendingUpdate, compareVersions };
++  return {
++    checkForUpdate,
++    launchApplyIfReady,
++    applyPendingUpdate,
++    compareVersions,
++    // Expostos para os testes exercitarem o codigo real (e nao copias dele).
++    hashesMatch,
++    isValidManifest,
++    isValidPlatformEntry,
++    assertSafeZipEntries,
++  };
+ })();
+ 
+ // ==================== setup ====================
+diff -ruN a/Imago-main/modules_test.js b/Imago-main/modules_test.js
+--- a/Imago-main/modules_test.js	2026-09-30 01:33:18.000000000 +0000
++++ b/Imago-main/modules_test.js	2026-09-30 01:47:18.000000000 +0000
+@@ -2,8 +2,11 @@
+ // Diferente do logic_test.js, este importa as funcoes de verdade -- precisa de
+ // "npm ci" antes (adm-zip). Rode com: npm test
+ const assert = require('assert');
++// Aponta o LibreOffice para um programa que nao existe: assim o teste das miniaturas
++// nao depende de ele estar instalado (a variavel e lida quando o modules.js carrega).
++process.env.SOFFICE_PATH = 'imago-soffice-inexistente';
+ const AdmZip = require('adm-zip');
+-const { pptx, network } = require('./modules');
++const { pptx, network, thumbnails } = require('./modules');
+ 
+ let passed = 0;
+ function test(name, fn) {
+@@ -97,4 +100,10 @@
+ test('aceita family numerico (Node 18.0-18.3 devolvia 4)', () => assert.strictEqual(network.bestLocalIp({ eth0: nic('10.0.0.7', false, 4) }), '10.0.0.7'));
+ test('sem rede nenhuma devolve 127.0.0.1', () => assert.strictEqual(network.bestLocalIp({}), '127.0.0.1'));
+ 
++test('miniaturas: sem LibreOffice o aviso final vem UMA vez so, com o motivo certo', () => {
++  const calls = [];
++  thumbnails.generateThumbnails('/tmp/nao-importa.pptx', 3, () => {}, (ok, reason) => calls.push([ok, reason]));
++  assert.deepStrictEqual(calls, [[false, 'ferramentas-ausentes']]);
++});
++
+ console.log(`\n${passed} teste(s) de modules.js passaram.`);
+diff -ruN a/Imago-main/office-bridge.ps1 b/Imago-main/office-bridge.ps1
+--- a/Imago-main/office-bridge.ps1	2026-09-30 01:33:18.000000000 +0000
++++ b/Imago-main/office-bridge.ps1	2026-09-30 01:44:28.000000000 +0000
+@@ -1,6 +1,6 @@
+ # Ponte COM entre o Imago e o Microsoft Office (PowerPoint, Word, Excel).
+ #
+-# Roda como processo filho do Imago (ver office.js). Protocolo por linhas JSON:
++# Roda como processo filho do Imago (ver "office" em modules.js). Protocolo por linhas JSON:
+ #   stdin  <- comandos:  {"cmd":"ppt.next"}  {"cmd":"ppt.goto","index":5} ...
+ #   stdout -> eventos:   {"type":"state",...} {"type":"slides",...} {"type":"thumb",...}
+ #
+diff -ruN a/Imago-main/package.json b/Imago-main/package.json
+--- a/Imago-main/package.json	2026-09-30 01:33:18.000000000 +0000
++++ b/Imago-main/package.json	2026-09-30 01:47:18.000000000 +0000
+@@ -9,7 +9,7 @@
+     "start": "node controller.js",
+     "configurar": "node controller.js --configurar",
+     "relay": "node relay-server.js",
+-    "test": "node logic_test.js && node modules_test.js",
++    "test": "node logic_test.js && node modules_test.js && node relay_test.js && node controller_test.js",
+     "prepare:web": "node -e \"const fs=require('fs');fs.mkdirSync('www',{recursive:true});for(const f of ['index.html','app.js','sw.js','manifest.json','version.json','icon.svg','capacitor.js','icon-192.png','icon-512.png','icon-maskable-512.png','apple-touch-icon.png'])fs.copyFileSync(f,'www/'+f)\"",
+     "sync": "npm run prepare:web && cap sync android",
+     "build:win": "pkg . --targets node18-win-x64 --output dist/win/Imago.exe",
+diff -ruN a/Imago-main/relay-server.js b/Imago-main/relay-server.js
+--- a/Imago-main/relay-server.js	2026-09-30 01:33:18.000000000 +0000
++++ b/Imago-main/relay-server.js	2026-09-30 01:45:52.000000000 +0000
+@@ -25,6 +25,13 @@
+ const MAX_SESSIONS = 500; // limite de sessoes simultaneas, evita esgotar memoria
+ const MAX_JOIN_ATTEMPTS_PER_CONN = 5; // tentativas de codigo por conexao antes de derrubar
+ 
++// Tipos de mensagem que SO o relay pode gerar. Se o celular (que so precisa do codigo
++// de 6 digitos para entrar) mandasse um deles, o PC trataria como se viesse do relay
++// (ex.: fingir "phone-disconnected" ou "session-created"). Por isso nao sao repassados.
++const RELAY_ONLY_TYPES = new Set([
++  'session-created', 'joined', 'error', 'phone-connected', 'phone-disconnected', 'pc-disconnected',
++]);
++
+ // sessions: codigo -> { pc: ws|null, phone: ws|null, lastActivity: number }
+ const sessions = new Map();
+ 
+@@ -189,6 +196,7 @@
+     }
+ 
+     // Depois que o papel esta definido, apenas repassa pro outro lado
++    if (RELAY_ONLY_TYPES.has(msg.type)) return;
+     const session = sessions.get(code);
+     if (!session) return;
+     touch(session);
+diff -ruN a/Imago-main/relay_test.js b/Imago-main/relay_test.js
+--- a/Imago-main/relay_test.js	1970-01-01 00:00:00.000000000 +0000
++++ b/Imago-main/relay_test.js	2026-09-30 01:45:26.000000000 +0000
+@@ -0,0 +1,156 @@
++// Teste de integração do relay-server.js: sobe o servidor de verdade e conecta um
++// "PC" e um "celular" falsos por WebSocket. Rode com: npm test (precisa de "npm ci").
++const assert = require('assert');
++const net = require('net');
++const path = require('path');
++const { spawn } = require('child_process');
++const WebSocket = require('ws');
++
++let passed = 0;
++async function test(name, fn) {
++  try {
++    await fn();
++    passed++;
++    console.log(`  ok  - ${name}`);
++  } catch (err) {
++    console.log(`FAIL  - ${name}`);
++    console.log(`        ${err.message}`);
++    process.exitCode = 1;
++  }
++}
++
++function freePort() {
++  return new Promise((resolve, reject) => {
++    const srv = net.createServer();
++    srv.listen(0, '127.0.0.1', () => {
++      const { port } = srv.address();
++      srv.close(() => resolve(port));
++    });
++    srv.on('error', reject);
++  });
++}
++
++// Cliente que guarda tudo o que recebe e deixa esperar por uma mensagem.
++function connect(url) {
++  return new Promise((resolve, reject) => {
++    const ws = new WebSocket(url);
++    const inbox = [];
++    const waiters = [];
++    ws.on('message', (raw) => {
++      const msg = JSON.parse(raw.toString());
++      const w = waiters.findIndex((x) => x.match(msg));
++      if (w >= 0) waiters.splice(w, 1)[0].resolve(msg);
++      else inbox.push(msg);
++    });
++    ws.on('error', reject);
++    ws.on('open', () =>
++      resolve({
++        ws,
++        inbox,
++        send: (o) => ws.send(JSON.stringify(o)),
++        next(match = () => true, ms = 3000) {
++          const i = inbox.findIndex(match);
++          if (i >= 0) return Promise.resolve(inbox.splice(i, 1)[0]);
++          return new Promise((res, rej) => {
++            const t = setTimeout(() => rej(new Error('tempo esgotado esperando mensagem')), ms);
++            waiters.push({ match, resolve: (m) => { clearTimeout(t); res(m); } });
++          });
++        },
++      })
++    );
++  });
++}
++const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
++
++(async () => {
++  const port = await freePort();
++  const relay = spawn(process.execPath, [path.join(__dirname, 'relay-server.js')], {
++    env: { ...process.env, PORT: String(port) },
++    stdio: ['ignore', 'pipe', 'inherit'],
++  });
++  await new Promise((resolve, reject) => {
++    relay.stdout.on('data', (d) => String(d).includes('Relay rodando') && resolve());
++    relay.on('exit', () => reject(new Error('relay encerrou antes de iniciar')));
++    setTimeout(() => reject(new Error('relay nao iniciou a tempo')), 8000);
++  });
++  const url = `ws://127.0.0.1:${port}`;
++
++  console.log('== relay-server.js (integração) ==');
++  let pc;
++  let phone;
++  let code;
++
++  await test('PC registra e recebe um código de 6 dígitos', async () => {
++    pc = await connect(url);
++    pc.send({ type: 'register-pc' });
++    const msg = await pc.next((m) => m.type === 'session-created');
++    assert.match(msg.code, /^\d{6}$/);
++    code = msg.code;
++  });
++
++  await test('celular com código errado recebe erro', async () => {
++    const bad = await connect(url);
++    bad.send({ type: 'join', code: '000000' });
++    const msg = await bad.next((m) => m.type === 'error');
++    assert.ok(msg.message);
++    bad.ws.close();
++  });
++
++  await test('celular com o código certo entra e o PC é avisado', async () => {
++    phone = await connect(url);
++    phone.send({ type: 'join', code });
++    await phone.next((m) => m.type === 'joined');
++    await pc.next((m) => m.type === 'phone-connected');
++  });
++
++  await test('mensagens comuns são repassadas nos dois sentidos', async () => {
++    phone.send({ type: 'hello', token: 'ABC' });
++    const got = await pc.next((m) => m.type === 'hello');
++    assert.strictEqual(got.token, 'ABC');
++    pc.send({ type: 'hello-ok' });
++    await phone.next((m) => m.type === 'hello-ok');
++    phone.send({ type: 'command', command: 'next' });
++    assert.strictEqual((await pc.next((m) => m.type === 'command')).command, 'next');
++  });
++
++  await test('celular NÃO consegue se passar pelo relay (tipos reservados são descartados)', async () => {
++    phone.send({ type: 'phone-disconnected' });
++    phone.send({ type: 'session-created', code: '999999' });
++    phone.send({ type: 'pc-disconnected' });
++    phone.send({ type: 'command', command: 'marcador' }); // esta, sim, deve chegar
++    const got = await pc.next((m) => m.type === 'command' && m.command === 'marcador');
++    assert.ok(got);
++    await sleep(100);
++    const indevidas = pc.inbox.filter((m) =>
++      ['phone-disconnected', 'session-created', 'pc-disconnected'].includes(m.type)
++    );
++    assert.deepStrictEqual(indevidas, []);
++  });
++
++  await test('PC também não repassa tipos reservados ao celular', async () => {
++    pc.send({ type: 'error', message: 'falso' });
++    pc.send({ type: 'slide-info', index: 1, total: 3 });
++    await phone.next((m) => m.type === 'slide-info');
++    assert.deepStrictEqual(phone.inbox.filter((m) => m.type === 'error'), []);
++  });
++
++  await test('sem JSON válido a conexão continua funcionando', async () => {
++    phone.ws.send('isso não é json');
++    phone.ws.send('null');
++    phone.send({ type: 'command', command: 'depois-do-lixo' });
++    assert.ok(await pc.next((m) => m.command === 'depois-do-lixo'));
++  });
++
++  await test('quando o PC cai, o celular é avisado e desconectado', async () => {
++    const closed = new Promise((r) => phone.ws.once('close', r));
++    pc.ws.close();
++    await phone.next((m) => m.type === 'pc-disconnected');
++    await closed;
++  });
++
++  relay.kill();
++  console.log(`\n${passed} teste(s) do relay passaram.`);
++})().catch((err) => {
++  console.error('FALHA no teste do relay:', err);
++  process.exit(1);
++});
