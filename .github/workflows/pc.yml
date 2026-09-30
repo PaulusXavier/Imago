@@ -53,6 +53,12 @@ jobs:
           }
           if (-not (Test-Path 'dist/win/node_modules/robotjs')) { throw 'Pasta robotjs ausente' }
 
+      - name: Exigir certificado de assinatura para publicar
+        if: ${{ env.HAS_SIGNING_CERT != 'true' }}
+        shell: powershell
+        run: |
+          throw 'Publicação interrompida: configure WINDOWS_CERTIFICATE_BASE64 e WINDOWS_CERTIFICATE_PASSWORD. Não publique um Imago.exe sem assinatura, pois o Controle inteligente de aplicativos do Windows pode bloqueá-lo.'
+
       - name: Assinar Imago.exe (quando o certificado estiver configurado)
         if: ${{ env.HAS_SIGNING_CERT == 'true' }}
         shell: powershell
