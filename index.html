@@ -742,6 +742,17 @@ input.invalid { border-color: var(--danger); }
     .nav-btn { min-height: 72px; font-size: 15px; }
     .extra-row .small-btn { font-size: 10px; }
   }
+  /* Leitura de QR code pela camera */
+  #btn-scan-qr { width: 100%; margin-bottom: 14px; padding: 15px; border-radius: 14px; font-size: 16px; font-weight: 700; }
+  #qr-scanner { position: fixed; inset: 0; z-index: 60; background: #000; display: flex; flex-direction: column; }
+  #qr-scanner video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  #qr-scanner .qr-top { position: relative; z-index: 1; padding: calc(16px + env(safe-area-inset-top, 0px)) 16px 12px; background: linear-gradient(#000c, #0000); color: #fff; text-align: center; }
+  #qr-scanner .qr-top strong { display: block; font-size: 17px; margin-bottom: 4px; }
+  #qr-scan-msg { font-size: 14px; opacity: .92; min-height: 20px; }
+  #qr-scanner .qr-frame { position: relative; z-index: 1; flex: 1; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+  #qr-scanner .qr-frame span { width: min(68vw, 300px); aspect-ratio: 1; border: 3px solid #fff; border-radius: 22px; box-shadow: 0 0 0 100vmax #0006; }
+  #qr-scanner .qr-bottom { position: relative; z-index: 1; padding: 12px 16px calc(20px + env(safe-area-inset-bottom, 0px)); }
+  #qr-scanner .qr-bottom button { width: 100%; }
   </style>
 </head>
 <body>
@@ -759,6 +770,8 @@ input.invalid { border-color: var(--danger); }
       <h2>Instalar o Imago</h2>
       <div id="install-body"></div>
     </div>
+
+    <button id="btn-scan-qr" type="button">📷 Escanear QR code do PC</button>
 
     <!-- Modo Bluetooth: só aparece no app Android (APK). Não precisa de nada no PC. -->
     <div id="bt-card" class="bt-card hidden">
@@ -914,6 +927,14 @@ input.invalid { border-color: var(--danger); }
   </section>
 
   <div id="toast" class="hidden" role="status" aria-live="polite"></div>
+
+  <!-- Leitor de QR code (camera) -->
+  <div id="qr-scanner" class="hidden" role="dialog" aria-modal="true" aria-label="Escanear QR code">
+    <video id="qr-video" playsinline muted></video>
+    <div class="qr-top"><strong>Escaneie o QR code do PC</strong><div id="qr-scan-msg" role="status" aria-live="polite"></div></div>
+    <div class="qr-frame"><span></span></div>
+    <div class="qr-bottom"><button id="btn-scan-cancel" type="button">Cancelar</button></div>
+  </div>
 
   <script src="capacitor.js"></script>
   <script src="app.js"></script>
