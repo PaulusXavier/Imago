@@ -49,13 +49,18 @@ const config = (() => {
   // sem precisar digitar ou copiar/colar caminho nenhum.
   function findPptxCandidates() {
     const home = os.homedir();
-    const folders = [
-      path.join(home, 'Desktop'),
-      path.join(home, 'Área de Trabalho'),
-      path.join(home, 'Documents'),
-      path.join(home, 'Documentos'),
-      path.join(home, 'Downloads'),
-    ];
+    const bases = [home];
+    // No Windows em português é muito comum a Área de Trabalho e os Documentos
+    // ficarem dentro do OneDrive; sem isso o assistente não achava o .pptx.
+    for (const v of [process.env.OneDrive, process.env.OneDriveConsumer, process.env.OneDriveCommercial]) {
+      if (v && !bases.includes(v)) bases.push(v);
+    }
+    const folders = [];
+    for (const base of bases) {
+      for (const name of ['Desktop', 'Área de Trabalho', 'Documents', 'Documentos', 'Downloads']) {
+        folders.push(path.join(base, name));
+      }
+    }
     const seen = new Set();
     const found = [];
     for (const folder of folders) {
@@ -184,7 +189,7 @@ const thumbnails = (() => {
 
   function toolExists(cmd) {
     try {
-      const res = spawnSync(cmd, ['--version'], { stdio: 'ignore' });
+      const res = spawnSync(cmd, ['--version'], { stdio: 'ignore', timeout: 20000 });
       return !res.error;
     } catch {
       return false;
@@ -320,6 +325,212 @@ const thumbnails = (() => {
   }
 
   return { checkTools, generateThumbnails };
+})();
+
+// ==================== pptx ====================
+const pptx = (() => {
+  // Lê título e notas de cada slide direto do .pptx (que é um .zip de XMLs).
+  //
+  // Detalhes que importam (e que a versão anterior errava):
+  //  - o NÚMERO no nome do arquivo (slide7.xml) NÃO é a posição do slide: quem
+  //    manda na ordem é o presentation.xml; depois de reordenar slides no
+  //    PowerPoint, título/notas apareciam trocados;
+  //  - as notas de um slide são as do notesSlide apontado pelo .rels dele;
+  //  - o título é o marcador "title", não o primeiro texto que aparecer;
+  //  - as notas são o marcador "body" da página de notas (antes, o primeiro
+  //    parágrafo das notas era descartado e o número do slide entrava no fim).
+  const path = require('path');
+
+  function fromCodePointSafe(n) {
+    try { return String.fromCodePoint(n); } catch { return ''; }
+  }
+
+  // &amp; por último: decodificar primeiro transformava "&amp;lt;" em "<".
+  function decodeXmlEntities(text) {
+    return String(text)
+      .replace(/&#x([0-9a-f]+);/gi, (_, h) => fromCodePointSafe(parseInt(h, 16)))
+      .replace(/&#(\d+);/g, (_, d) => fromCodePointSafe(parseInt(d, 10)))
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&amp;/g, '&');
+  }
+
+  // Parágrafos de um trecho de XML (runs <a:t> unidos; <a:br/> vira quebra).
+  function paragraphsOf(xml) {
+    const out = [];
+    for (const m of String(xml).matchAll(/<a:p(?:\s[^>]*)?>([\s\S]*?)<\/a:p>/g)) {
+      const body = m[1].replace(/<a:br\b[^>]*\/?>/g, '<a:t>\n</a:t>');
+      let text = '';
+      for (const t of body.matchAll(/<a:t(?:\s[^>]*)?>([\s\S]*?)<\/a:t>/g)) text += decodeXmlEntities(t[1]);
+      text = text.replace(/\s+$/g, '');
+      if (text.trim()) out.push(text);
+    }
+    return out;
+  }
+
+  // Formas <p:sp> com o tipo de marcador (title, body, sldNum...).
+  function shapesOf(xml) {
+    const shapes = [];
+    for (const m of String(xml).matchAll(/<p:sp\b[^>]*>([\s\S]*?)<\/p:sp>/g)) {
+      const ph = m[1].match(/<p:ph\b([^>]*)>/);
+      const type = ph ? (ph[1].match(/\btype="([^"]+)"/) || [])[1] || 'body' : null;
+      shapes.push({ type, paragraphs: paragraphsOf(m[1]) });
+    }
+    return shapes;
+  }
+
+  const IGNORED_PLACEHOLDERS = new Set(['sldNum', 'ftr', 'dt', 'hdr', 'sldImg']);
+
+  function titleOf(xml) {
+    const shapes = shapesOf(xml);
+    const titled = shapes.find((s) => (s.type === 'title' || s.type === 'ctrTitle') && s.paragraphs.length);
+    if (titled) return titled.paragraphs.join(' ').replace(/\s+/g, ' ').trim();
+    const any = shapes.find((s) => !IGNORED_PLACEHOLDERS.has(s.type) && s.paragraphs.length);
+    return any ? any.paragraphs[0].replace(/\s+/g, ' ').trim() : '';
+  }
+
+  function notesOf(xml) {
+    const body = shapesOf(xml).find((s) => s.type === 'body' && s.paragraphs.length);
+    return body ? body.paragraphs.join('\n').trim() : '';
+  }
+
+  function attr(tag, name) {
+    const m = tag.match(new RegExp('\\b' + name + '="([^"]*)"'));
+    return m ? m[1] : null;
+  }
+
+  function relationships(xml) {
+    const rels = new Map();
+    for (const m of String(xml).matchAll(/<Relationship\b[^>]*>/g)) {
+      const id = attr(m[0], 'Id');
+      if (id) rels.set(id, { target: attr(m[0], 'Target'), type: attr(m[0], 'Type') || '' });
+    }
+    return rels;
+  }
+
+  // Alvo de um .rels resolvido para o caminho dentro do zip.
+  function resolveTarget(baseDir, target) {
+    if (!target) return null;
+    if (target.startsWith('/')) return target.replace(/^\/+/, '');
+    return path.posix.normalize(path.posix.join(baseDir, target));
+  }
+
+  function relsPathFor(partPath) {
+    const dir = path.posix.dirname(partPath);
+    return `${dir}/_rels/${path.posix.basename(partPath)}.rels`;
+  }
+
+  function slideNumberFromName(name) {
+    const m = name.match(/(\d+)\.xml$/);
+    return m ? parseInt(m[1], 10) : 0;
+  }
+
+  function readText(zip, name) {
+    const entry = name && zip.getEntry(name);
+    return entry ? entry.getData().toString('utf8') : null;
+  }
+
+  // Lista de caminhos dos slides NA ORDEM da apresentação.
+  function orderedSlidePaths(zip) {
+    try {
+      const pres = readText(zip, 'ppt/presentation.xml');
+      const presRels = readText(zip, 'ppt/_rels/presentation.xml.rels');
+      if (pres && presRels) {
+        const rels = relationships(presRels);
+        const ordered = [];
+        for (const m of pres.matchAll(/<p:sldId\b[^>]*>/g)) {
+          const rid = attr(m[0], 'r:id');
+          const rel = rid && rels.get(rid);
+          const target = rel && resolveTarget('ppt', rel.target);
+          if (target && zip.getEntry(target)) ordered.push(target);
+        }
+        if (ordered.length) return ordered;
+      }
+    } catch { /* cai no plano B abaixo */ }
+    return zip
+      .getEntries()
+      .map((e) => e.entryName)
+      .filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n))
+      .sort((a, b) => slideNumberFromName(a) - slideNumberFromName(b));
+  }
+
+  function notesPathFor(zip, slidePath) {
+    try {
+      const relsXml = readText(zip, relsPathFor(slidePath));
+      if (!relsXml) return null;
+      for (const rel of relationships(relsXml).values()) {
+        if (/\/notesSlide$/.test(rel.type)) return resolveTarget(path.posix.dirname(slidePath), rel.target);
+      }
+    } catch { /* sem notas */ }
+    return null;
+  }
+
+  // Devolve [{ title, notes }] na ordem dos slides. Recebe o AdmZip já aberto.
+  function readSlides(zip) {
+    return orderedSlidePaths(zip).map((slidePath, i) => {
+      const xml = readText(zip, slidePath) || '';
+      const notesXml = readText(zip, notesPathFor(zip, slidePath));
+      return {
+        title: titleOf(xml) || `Slide ${i + 1}`,
+        notes: notesXml ? notesOf(notesXml) : '',
+      };
+    });
+  }
+
+  function load(pptxPath) {
+    if (!pptxPath) return [];
+    try {
+      const AdmZip = require('adm-zip');
+      return readSlides(new AdmZip(pptxPath));
+    } catch (err) {
+      console.log('[Aviso] Nao foi possivel ler o .pptx para notas/titulos:', err.message);
+      return [];
+    }
+  }
+
+  return { load, readSlides, decodeXmlEntities, titleOf, notesOf };
+})();
+
+// ==================== network ====================
+const network = (() => {
+  // Escolhe o IP que vai no QR code. Pegar "o primeiro IPv4" costuma cair num
+  // adaptador virtual (Hyper-V/WSL, VirtualBox, VPN...) que o celular não
+  // alcança; aqui preferimos a rede doméstica/corporativa de verdade.
+  const VIRTUAL_NAME = /vethernet|virtualbox|vmware|hyper-v|wsl|docker|vpn|tailscale|zerotier|hamachi|bluetooth|loopback|tap-|\btun|utun|veth|virbr|br-/i;
+
+  function scoreOf(address) {
+    if (/^192\.168\./.test(address)) return 0;
+    if (/^10\./.test(address)) return 1;
+    if (/^172\.(1[6-9]|2\d|3[01])\./.test(address)) return 2;
+    if (/^169\.254\./.test(address)) return 9; // sem DHCP: raramente útil
+    if (/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(address)) return 6; // CGNAT / VPN
+    return 5;
+  }
+
+  // Lista de { name, address, virtual }, do mais provável para o menos provável.
+  function listLocalIps(interfaces) {
+    const source = interfaces || require('os').networkInterfaces();
+    const found = [];
+    for (const name of Object.keys(source)) {
+      for (const iface of source[name] || []) {
+        const isV4 = iface.family === 'IPv4' || iface.family === 4;
+        if (!isV4 || iface.internal) continue;
+        const virtual = VIRTUAL_NAME.test(name);
+        found.push({ name, address: iface.address, virtual, score: scoreOf(iface.address) + (virtual ? 20 : 0) });
+      }
+    }
+    found.sort((a, b) => a.score - b.score);
+    return found.map(({ name, address, virtual }) => ({ name, address, virtual }));
+  }
+
+  function bestLocalIp(interfaces) {
+    const list = listLocalIps(interfaces);
+    return list.length ? list[0].address : '127.0.0.1';
+  }
+
+  return { listLocalIps, bestLocalIp };
 })();
 
 // ==================== office ====================
@@ -470,6 +681,7 @@ const updater = (() => {
   const fs = require('fs');
   const path = require('path');
   const https = require('https');
+  const os = require('os');
   const crypto = require('crypto');
   const { spawn } = require('child_process');
   const { URL } = require('url');
@@ -685,6 +897,13 @@ const updater = (() => {
       return;
     }
 
+    // Apaga cópias temporárias do atualizador deixadas por atualizações anteriores.
+    try {
+      for (const f of fs.readdirSync(os.tmpdir())) {
+        if (/^imago-updater-\d+(\.exe)?$/.test(f)) fs.rmSync(path.join(os.tmpdir(), f), { force: true });
+      }
+    } catch { /* em uso ou sem permissão: fica para a próxima */ }
+
     try {
       const manifest = await fetchJson(manifestUrl);
       if (!isValidManifest(manifest)) {
@@ -766,8 +985,18 @@ const updater = (() => {
     if (!fs.existsSync(readyMarker) || !fs.existsSync(extractedPath)) return;
 
     try {
+      // O processo que troca os arquivos NÃO pode ser o próprio Imago.exe que vai
+      // ser substituído: no Windows um .exe em execução não pode ser sobrescrito
+      // (a atualização falhava com EBUSY/EPERM). Por isso roda uma cópia
+      // temporária do executável.
+      let runner = process.execPath;
+      try {
+        const copy = path.join(os.tmpdir(), `imago-updater-${process.pid}${path.extname(process.execPath)}`);
+        fs.copyFileSync(process.execPath, copy);
+        runner = copy;
+      } catch { /* sem cópia: tenta com o próprio executável, como antes */ }
       const child = spawn(
-        process.execPath,
+        runner,
         ['--aplicar-atualizacao', String(process.pid), appConfig.baseDir(), extractedPath],
         { detached: true, stdio: 'ignore', cwd: appConfig.baseDir() }
       );
@@ -913,4 +1142,4 @@ const setup = (() => {
   return { runWizard: main };
 })();
 
-module.exports = { config, history, thumbnails, office, updater, setup };
+module.exports = { config, history, thumbnails, pptx, network, office, updater, setup };
