@@ -78,10 +78,12 @@ public class ImagoHidPlugin extends Plugin {
 
     private final ExecutorService sender = Executors.newSingleThreadExecutor();
     private final ExecutorService callbackExecutor = Executors.newSingleThreadExecutor();
-    private BluetoothHidDevice hid;
-    private BluetoothDevice host;
-    private boolean registered = false;
-    private boolean starting = false;
+    // Lidos/escritos por threads diferentes (thread principal, callbackExecutor e sender):
+    // sem "volatile" uma thread podia continuar vendo um valor antigo (ex.: host ja desconectado).
+    private volatile BluetoothHidDevice hid;
+    private volatile BluetoothDevice host;
+    private volatile boolean registered = false;
+    private volatile boolean starting = false;
 
     private final BluetoothProfile.ServiceListener profileListener = new BluetoothProfile.ServiceListener() {
         @Override
