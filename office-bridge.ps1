@@ -1,6 +1,6 @@
 # Ponte COM entre o Imago e o Microsoft Office (PowerPoint, Word, Excel).
 #
-# Roda como processo filho do Imago (ver office.js). Protocolo por linhas JSON:
+# Roda como processo filho do Imago (ver "office" em modules.js). Protocolo por linhas JSON:
 #   stdin  <- comandos:  {"cmd":"ppt.next"}  {"cmd":"ppt.goto","index":5} ...
 #   stdout -> eventos:   {"type":"state",...} {"type":"slides",...} {"type":"thumb",...}
 #
