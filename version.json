@@ -1,6 +1,6 @@
 {
-  "version": "2.4.0",
-  "notes": "Redesign inspirado no Office Remote: interface clara, controles grandes e navegação focada em slides.",
+  "version": "2.6.0",
+  "notes": "Refinamento visual Office Remote: controles maiores, navegação sticky e melhor leitura no celular.",
   "downloads": {
     "win": { "url": "", "sha256": "" },
     "mac": { "url": "", "sha256": "" },
